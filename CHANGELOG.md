@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.4.0-beta (2026-11-14)
 
 ### New
 - Enchanting: CRAFT puts the enchant straight onto the cheapest matching item in your bags (a bracer for
