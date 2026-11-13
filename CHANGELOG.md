@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.3.0-beta (2026-11-14)
+## Unreleased (v0.3.0-beta)
 
 First release on CurseForge (beta).
 
