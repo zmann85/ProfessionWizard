@@ -12,6 +12,7 @@ ignore:
   - tools
   - README.md
   - CURSEFORGE.md
+  - logo.svg
   - .gitignore
 
 embedded-libraries:

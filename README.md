@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.svg" width="128" alt="CraftList logo"></p>
+
 <h1 align="center">CraftList</h1>
 <p align="center"><b>The cheapest way to level every crafting profession, from your own auction house prices, with a shopping list that counts your bags, bank, mail and alts.</b><br>
 A WoW Forever addon.</p>
