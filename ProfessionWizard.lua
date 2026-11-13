@@ -1130,14 +1130,101 @@ end
 local queue = {}
 local nextInQueue
 
-local function startCraft(w, n, label)
+---------------------------------------------------------------------------
+-- Enchanting: an enchant has no item to make, it goes onto an item. For each enchant we pick the cheapest
+-- item of the right kind in your bags (grey or white first, never what you're wearing), CRAFT casts the
+-- enchant straight onto it, and the game's "replace enchant?" question is answered for that item only.
+-- If the game won't let us target the item, you keep the targeting hand and the panel says which to click.
+---------------------------------------------------------------------------
+local Ench = { cache = {}, pending = nil }
+Ench.SLOTS = {
+  ["Bracer"]    = { what = "bracer", locs = { INVTYPE_WRIST = true } },
+  ["Chest"]     = { what = "chest piece", locs = { INVTYPE_CHEST = true, INVTYPE_ROBE = true } },
+  ["Cloak"]     = { what = "cloak", locs = { INVTYPE_CLOAK = true } },
+  ["Boots"]     = { what = "pair of boots", locs = { INVTYPE_FEET = true } },
+  ["Gloves"]    = { what = "pair of gloves", locs = { INVTYPE_HAND = true } },
+  ["Shield"]    = { what = "shield", locs = { INVTYPE_SHIELD = true } },
+  ["2H Weapon"] = { what = "two-handed weapon", locs = { INVTYPE_2HWEAPON = true } },
+  ["Weapon"]    = { what = "weapon", locs = { INVTYPE_WEAPON = true, INVTYPE_WEAPONMAINHAND = true,
+                    INVTYPE_WEAPONOFFHAND = true, INVTYPE_2HWEAPON = true } },
+}
+
+-- the kind of item this recipe enchants, or nil when it isn't an enchant (rods, oils and wands make items)
+function Ench.slotOf(r)
+  if not r or r.prof ~= 333 or (r.creates or 0) > 0 or not r.name then return nil end
+  local key = r.name:match("^Enchant (.-) %- ")
+  return key and Ench.SLOTS[key] and key or nil
+end
+
+-- the cheapest matching item in your bags: { bag, slot, id, link, quality } or nil
+function Ench.target(r)
+  local key = Ench.slotOf(r)
+  if not key then return nil end
+  local c = Ench.cache[key]
+  if c and GetTime() - c.at < 0.5 then return c.t end
+  local locs, best, bestScore = Ench.SLOTS[key].locs, nil, nil
+  for bag = 0, (NUM_BAG_SLOTS or 4) do
+    for slot = 1, numSlots(bag) do
+      local id, _, locked = slotInfo(bag, slot)
+      if id and not locked then
+        local _, link, quality, _, _, _, _, _, loc, _, sell = GetItemInfo(id)
+        if loc and locs[loc] then
+          local score = ((quality or 1) >= 2 and 1e9 or 0) + (sell or 0)
+          if not bestScore or score < bestScore then
+            best, bestScore = { bag = bag, slot = slot, id = id, link = link, quality = quality }, score
+          end
+        end
+      end
+    end
+  end
+  Ench.cache[key] = { at = GetTime(), t = best }
+  return best
+end
+
+function Ench.what(r)
+  local key = Ench.slotOf(r)
+  return key and Ench.SLOTS[key].what or "item"
+end
+
+-- right after the enchant was started (same click): put it on the chosen item
+function Ench.apply(r)
+  if not Ench.slotOf(r) or not (SpellIsTargeting and SpellIsTargeting()) then return end
+  local t = Ench.target(r)
+  if not t then
+    Print("no " .. Ench.what(r) .. " in your bags to put " .. r.name .. " on. Any cheap one works (grey or white is fine); "
+      .. "click an item now, or right-click to cancel.")
+    return
+  end
+  Ench.pending = { bag = t.bag, slot = t.slot, at = GetTime() }
+  local pick = (C_Container and C_Container.PickupContainerItem) or PickupContainerItem
+  if pick then pcall(pick, t.bag, t.slot) end
+  if SpellIsTargeting() then
+    Print("click " .. (t.link or "the item") .. " in your bags to put the enchant on it.")
+  end
+end
+
+-- the game asks before replacing an enchant: say yes, but only for the item we just picked
+function Ench.onReplace()
+  local p = Ench.pending
+  if not (p and GetTime() - p.at < 5) then return end
+  Ench.pending = nil
+  if ReplaceEnchant and pcall(ReplaceEnchant) then
+    C_Timer.After(0, function() if StaticPopup_Hide then StaticPopup_Hide("REPLACE_ENCHANT") end end)
+  end
+end
+
+local function startCraft(w, n, label, r)
   if not w or not n or n < 1 then return end
+  local ench = Ench.slotOf(r)
+  if ench then n = 1 end
   if InCombatLockdown and InCombatLockdown() then Print("can't craft in combat."); return end
   if job and not job.stopped then Print("already crafting. Wait for it to finish, or move to stop it."); return end
   local ok, err
   if w.craftIndex and DoCraft then
     n = 1 -- enchants go on one item at a time
     ok, err = pcall(DoCraft, w.craftIndex)
+  elseif w.index and DoTradeSkill and ench then
+    ok, err = pcall(DoTradeSkill, w.index, 1)
   elseif w.index and DoTradeSkill then
     ok, err = pcall(DoTradeSkill, w.index, n)
   elseif w.recipeID and C_TradeSkillUI and C_TradeSkillUI.CraftRecipe then
@@ -1148,9 +1235,15 @@ local function startCraft(w, n, label)
   if not ok then Print("couldn't start crafting: " .. tostring(err)); return end
   job = { name = w.name, label = label or w.name, total = n, done = 0 }
   local this = job
-  C_Timer.After(2.5, function()
-    if job == this and not job.st then job.stopped = "didn't start"; queue = {}; clearJob(4); if refresh then refresh() end end
-  end)
+  if ench or w.craftIndex then Ench.apply(r) end
+  -- not started after 2.5s: it didn't work. Still choosing the item for an enchant counts as waiting (up to a minute).
+  local waited = 0
+  local function check()
+    if job ~= this or job.st then return end
+    if SpellIsTargeting and SpellIsTargeting() and waited < 60 then waited = waited + 1; C_Timer.After(1, check); return end
+    job.stopped = "didn't start"; queue = {}; clearJob(4); if refresh then refresh() end
+  end
+  C_Timer.After(2.5, check)
   if refresh then refresh() end
 end
 
@@ -1349,7 +1442,7 @@ local function makeStep(i)
   l.amt:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
   l.amt:SetScript("OnEscapePressed", function(self) l.custom = nil; self:ClearFocus(); refresh() end)
   l.go:SetScript("OnClick", function()
-    startCraft(l.rec, tonumber(l.amt:GetText()) or 0, l.label)
+    startCraft(l.rec, tonumber(l.amt:GetText()) or 0, l.label, l.st and l.st.r)
     l.custom = nil
   end)
   l.go:HookScript("OnEnter", function(self)
@@ -1357,7 +1450,20 @@ local function makeStep(i)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:AddLine("Craft " .. (l.label or "?"), 1, 1, 1)
     GameTooltip:AddLine(string.format("You can make %d with what's in your bags.", l.rec.avail or 0), 0.8, 0.8, 0.8, true)
-    if l.rec.craftIndex then GameTooltip:AddLine("Enchants go on one item at a time: click, then pick the item.", 0.8, 0.8, 0.8, true) end
+    local er = l.st and l.st.r
+    if Ench.slotOf(er) then
+      local tg = Ench.target(er)
+      if tg then
+        GameTooltip:AddLine("One enchant per click, put straight on " .. (tg.link or "it") .. " from your bags (the cheapest "
+          .. Ench.what(er) .. " you carry). Replacing its old enchant is confirmed for you, never on gear you're wearing.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("An item that isn't bound yet: the game asks once whether to bind it.", 0.6, 0.6, 0.6, true)
+      else
+        GameTooltip:AddLine("Needs a " .. Ench.what(er) .. " in your bags to enchant. Any cheap one works, grey or white is fine, "
+          .. "and you can enchant the same one again and again.", 1, 0.82, 0.45, true)
+      end
+    elseif l.rec.craftIndex then
+      GameTooltip:AddLine("One at a time: click, then pick the item.", 0.8, 0.8, 0.8, true)
+    end
     GameTooltip:AddLine("Moving or getting hit stops it, like normal crafting.", 0.6, 0.6, 0.6, true)
     GameTooltip:Show()
   end)
@@ -1492,13 +1598,12 @@ local function build()
   close:SetScript("OnClick", function() frame:Hide() end)
 
   -- SETTINGS: a small panel under the header with the window's own switches
-  local setBtn = CreateFrame("Button", nil, frame)
-  setBtn:SetSize(64, 20); setBtn:SetPoint("RIGHT", close, "LEFT", -4, 0)
-  setBtn.fs = text(setBtn, 11, 1, 1, 1, 0.4); setBtn.fs:SetPoint("RIGHT"); setBtn.fs:SetText("SETTINGS")
-  setBtn:SetScript("OnEnter", function(self) self.fs:SetTextColor(1, 1, 1, 0.85) end)
-  setBtn:SetScript("OnLeave", function(self) self.fs:SetTextColor(1, 1, 1, 0.4) end)
+  -- (placed left of LISTS once that exists, further down)
+  local setBtn = chip(frame, "SETTINGS", 76)
+  setBtn:SetHeight(18); setBtn:SetPoint("TOPRIGHT", -98, -8)
+  frame.setBtn = setBtn
   local opts = CreateFrame("Frame", nil, frame)
-  opts:SetSize(208, 88); opts:SetPoint("TOPRIGHT", -8, -28)
+  opts:SetSize(208, 88); opts:SetPoint("TOPRIGHT", setBtn, "BOTTOMRIGHT", 0, -2)
   opts:SetFrameLevel(frame:GetFrameLevel() + 20); opts:EnableMouse(true); opts:Hide()
   local obg = opts:CreateTexture(nil, "BACKGROUND"); obg:SetAllPoints()
   obg:SetColorTexture(s.bg[1], s.bg[2], s.bg[3], 1)
@@ -1523,7 +1628,12 @@ local function build()
   opts:SetScript("OnShow", function(self)
     self.mini:SetActive(not ProfessionWizardDB.minimap.hide); self.auto:SetActive(ProfessionWizardDB.auto ~= false)
   end)
-  setBtn:SetScript("OnClick", function() opts:SetShown(not opts:IsShown()) end)
+  setBtn:SetScript("OnClick", function()
+    opts:SetShown(not opts:IsShown())
+    if opts:IsShown() and frame.menu then frame.menu:Hide() end
+  end)
+  opts:HookScript("OnShow", function() setBtn:SetActive(true) end)
+  opts:HookScript("OnHide", function() setBtn:SetActive(false) end)
   frame:HookScript("OnHide", function() opts:Hide() end)
   frame.opts = opts
 
@@ -1765,12 +1875,13 @@ local function build()
   frame.lists = chip(frame, "LISTS", 60)
   frame.lists:SetPoint("TOPRIGHT", -34, -8)
   frame.lists:SetHeight(18)
-  frame.lists:SetScript("OnClick", function() toggleMenu() end)
+  frame.lists:SetScript("OnClick", function() if frame.opts then frame.opts:Hide() end; toggleMenu() end)
+  frame.setBtn:ClearAllPoints(); frame.setBtn:SetPoint("RIGHT", frame.lists, "LEFT", -4, 0)
   tip(frame.lists, "Your characters' lists",
     "See what another character still needs: what you can send it from here and what to buy for it.",
     "Lists are saved whenever you play the crafter.")
 
-  frame:SetScript("OnShow", function() refresh() end)
+  frame:HookScript("OnShow", function() refresh() end)
   frame:Hide()
 end
 
@@ -2244,7 +2355,8 @@ function Tut.steps()
       body = "BUY RECIPES lets the route use recipes from the auction house or a vendor. COUNT BANK, ALTS and MAIL count what you already own there. SPARE adds a few extra materials for crafts that don't give a point." },
     { from = function() return frame.stepsHead end, area = true,
       title = "Your route and shopping list",
-      body = "CRAFTS: which recipe to make for which skill range, with CRAFT to make the next one. MATERIALS: what you need, what you have (bags, bank, mail, alts) and what's still to buy. SEARCH MISSING looks the rest up at the auction house." },
+      body = "CRAFTS: which recipe to make for which skill range, with CRAFT to make the next one. MATERIALS: what you need, what you have (bags, bank, mail, alts) and what's still to buy. SEARCH MISSING looks the rest up at the auction house."
+        .. (shownProf() == 333 and "\n\nEnchanting: each enchant goes on the cheapest matching item in your bags (it says which next to the recipe). Carry a cheap bracer, cloak, chest piece and so on, grey or white is fine, and enchant the same one again and again." or "") },
   }
 end
 
@@ -2471,6 +2583,10 @@ refresh = function()
             plansTotal = plansTotal + (st.plans or 0)
           end
         end
+        if Ench.slotOf(r) then
+          local tg = Ench.target(r)
+          info = info .. "  ·  " .. (tg and ("on " .. (tg.link or "?")) or (warm .. "needs a cheap " .. Ench.what(r) .. " in your bags|r"))
+        end
         local w = tsOpen and findRecipe(r) or nil
         if l.key ~= r.spell then l.custom = nil; l.key = r.spell end
         l.rec, l.label = w, r.name
@@ -2478,7 +2594,7 @@ refresh = function()
           if not l.amt:HasFocus() then
             local default = st.crafts
             if (w.avail or 0) > 0 then default = math.min(default, w.avail) end
-            if w.craftIndex then default = 1 end
+            if w.craftIndex or Ench.slotOf(r) then default = 1 end
             l.amt:SetText(tostring(l.custom or default))
           end
           l.go:SetActive((w.avail or 0) > 0 and not (job and not job.stopped))
@@ -2956,7 +3072,8 @@ ev:SetScript("OnEvent", function(self, event, arg1)
       "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE",
       "CRAFT_SHOW", "CRAFT_CLOSE", "CRAFT_UPDATE", "PLAYER_REGEN_ENABLED",
       "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "AUCTION_ITEM_LIST_UPDATE",
-      "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_FAILED" }) do
+      "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_FAILED",
+      "REPLACE_ENCHANT" }) do
       pcall(self.RegisterEvent, self, e)
     end
     if SendMail then pcall(hooksecurefunc, "SendMail", function(recipient) pcall(noteOutgoing, recipient) end) end
@@ -2964,6 +3081,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     if event ~= "PLAYER_LOGIN" then return end
   end
   if event == "ADDON_LOADED" or not inited then return end
+  if event == "REPLACE_ENCHANT" then Ench.onReplace(); return end
   if event:sub(1, 15) == "UNIT_SPELLCAST_" then
     onCast(event, arg1)
     if frame and frame:IsShown() and event ~= "UNIT_SPELLCAST_START" then soon() end

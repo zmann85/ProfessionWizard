@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### New
+- Enchanting: CRAFT puts the enchant straight onto the cheapest matching item in your bags (a bracer for
+  Enchant Bracer, a cloak for Enchant Cloak ...; grey or white items first, never gear you're wearing) and
+  confirms replacing its old enchant for that item only. The route shows which item each enchant goes on, or
+  that you need a cheap one in your bags. If the game won't let the enchant be put on the item for you, you keep
+  the targeting hand and the chat says which item to click.
+
+### Fixed
+- SETTINGS and LISTS sat on top of each other in the top right corner.
+- The list didn't open next to the profession window: that placement never ran.
+- Taking more than a moment to pick the item for an enchant counted as "didn't start".
+- In the newer profession window an enchant could be started several times at once. Enchants now always go one
+  at a time.
+
 ## v0.3.0-beta (2026-11-14)
 
 First release on CurseForge (beta).
