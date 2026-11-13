@@ -1,5 +1,5 @@
--- CraftList_Data (GNU GPL v2, see LICENSE.txt): recipe data for CraftList.
-local ns = CraftListAPI
+-- ProfessionWizard_Data (GNU GPL v2, see LICENSE.txt): recipe data for Profession Wizard.
+local ns = ProfessionWizardAPI
 if not ns then return end
 -- Generated from WoW Forever client data (build 1.60.1.70245, via wow-profession-journal, MIT)
 -- plus AtlasLoot (GPL) learn levels and crafted amounts. Do not edit by hand: rerun gen.py.

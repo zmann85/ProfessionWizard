@@ -2,7 +2,7 @@ local _, ns = ...
 
 -- Reagents sold by trade supply vendors. Until you've seen one at a vendor, its price is
 -- taken as 4x what the vendor pays for it (how Classic vendor prices work for these).
--- Every vendor you open is read too, so this list fills in by itself (/cl vendors).
+-- Every vendor you open is read too, so this list fills in by itself (/pw vendors).
 ns.VENDOR_ITEMS = {}
 for _, id in ipairs({
   2320, 2321, 4291, 8343, 14341,             -- threads

@@ -1,12 +1,12 @@
 ## Interface: 16001
-## Title: CraftList
+## Title: Profession Wizard
 ## Notes: Cheapest skilling route for every crafting profession from your AH prices, with a material checklist across your alts, bank and mail.
 ## Author: Ghaan
 ## Version: @project-version@
 ## IconTexture: Interface\Icons\Trade_BlackSmithing
 ## X-License: All Rights Reserved
 ## OptionalDeps: Auctionator, GoldSense, Itinerary, EllesmereUI
-## SavedVariables: CraftListDB
+## SavedVariables: ProfessionWizardDB
 
 libs\LibStub\LibStub.lua
 libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
@@ -14,4 +14,4 @@ libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
 libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 
 Vendor.lua
-CraftList.lua
+ProfessionWizard.lua

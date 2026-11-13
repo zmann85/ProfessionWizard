@@ -1,7 +1,7 @@
-CraftList - Data
+Profession Wizard - Data
 ================
 
-Every crafting recipe of WoW Forever for CraftList: its colours (orange, yellow, green, grey), reagents,
+Every crafting recipe of WoW Forever for Profession Wizard: its colours (orange, yellow, green, grey), reagents,
 what it makes, how many it makes, the level it's learned at, whether a trainer teaches it and which item
 teaches it otherwise.
 
@@ -9,8 +9,8 @@ Colours, reagents, results and the trainer flag come from the WoW Forever client
 as collected by wow-profession-journal by bparish628 (https://github.com/bparish628/wow-profession-journal,
 MIT license, full text below). Learn levels and crafted amounts come from the WoW Forever crafting data of
 AtlasLoot (AtlasLootClassic, originally by Hoizame and contributors, GNU General Public License v2). This data add-on is distributed under the GNU GPL v2 accordingly (full text in
-COPYING.txt). It comes in the same download as CraftList, in a folder of its own, but is separate from
-CraftList itself (all rights reserved).
+COPYING.txt). It comes in the same download as Profession Wizard, in a folder of its own, but is separate from
+Profession Wizard itself (all rights reserved).
 
 The recipes' names are the game's own. World of Warcraft is a trademark of Blizzard Entertainment.
 Not affiliated with Blizzard.

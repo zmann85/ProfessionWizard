@@ -1,19 +1,19 @@
-CraftList
+Profession Wizard
 Copyright (c) 2026 Ghaan. All rights reserved.
 
-You may download CraftList, install it in World of Warcraft, use it, and read its code.
+You may download Profession Wizard, install it in World of Warcraft, use it, and read its code.
 
 Without written permission from the author you may not:
-- upload, publish or otherwise distribute CraftList or a modified version of it;
+- upload, publish or otherwise distribute Profession Wizard or a modified version of it;
 - copy, adapt or reuse its code or other content in another addon, library or project.
 
 Everything not explicitly allowed here is reserved by the author.
 
-The CraftList_Data add-on (the recipe data) comes in the same download, in a folder of its own. It is
-separate from CraftList and has its own license (GNU GPL v2, CraftList_Data/LICENSE.txt and
+The ProfessionWizard_Data add-on (the recipe data) comes in the same download, in a folder of its own. It is
+separate from Profession Wizard and has its own license (GNU GPL v2, ProfessionWizard_Data/LICENSE.txt and
 COPYING.txt); this license doesn't cover it.
 
-World of Warcraft is a trademark of Blizzard Entertainment, Inc. CraftList is not affiliated with
+World of Warcraft is a trademark of Blizzard Entertainment, Inc. Profession Wizard is not affiliated with
 or endorsed by Blizzard Entertainment.
 
 

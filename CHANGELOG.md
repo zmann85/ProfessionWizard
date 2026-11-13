@@ -12,22 +12,22 @@ First release on CurseForge (beta).
   buying it.
 - A material checklist for the route that counts your bags, bank, mailbox and alts (and what GoldSense has
   recorded), and lists what's left to buy.
-- SCAN AH in the CraftList window prices the route's reagents at the auction house. Auctionator's prices are
+- SCAN AH in the Profession Wizard window prices the route's reagents at the auction house. Auctionator's prices are
   used when there's no recent scan.
 - Lists: each crafter's missing materials, so an alt can see what to send it, and a mailbox panel that sends
   them in one click.
 - CRAFT, MAKE and SMELT buttons, and SMELT ALL for every smelt the route needs.
 - A first-time walkthrough the first time the list opens: your target skill, prices (SCAN AH), FIND CHEAPEST
-  ROUTE, the switches, and how to read the route. SETTINGS > SHOW TUTORIAL or `/cl tutorial` plays it again.
+  ROUTE, the switches, and how to read the route. SETTINGS > SHOW TUTORIAL or `/pw tutorial` plays it again.
 - A hint above the route while its materials have no auction house prices yet, or only ones older than a day:
   where to go and what to click (it knows whether you have Auctionator and whether you're at the auction house).
 - The list opens with your profession window (SETTINGS > OPEN WITH PROFESSIONS) and, until you drag it
-  somewhere, right next to it. Each character keeps its own place; `/cl reset` forgets it.
-- A minimap button (SETTINGS > MINIMAP BUTTON or `/cl minimap` to hide it).
-- CraftList learns as you play: the recipes you know, a recipe's colours when the profession window shows
+  somewhere, right next to it. Each character keeps its own place; `/pw reset` forgets it.
+- A minimap button (SETTINGS > MINIMAP BUTTON or `/pw minimap` to hide it).
+- Profession Wizard learns as you play: the recipes you know, a recipe's colours when the profession window shows
   them differently, and vendor prices when you open a vendor.
 
 ### Known
-- SCAN AH, SMELT ALL and the OPEN buttons are new and not much tested yet. `/cl debug` shows what CraftList
+- SCAN AH, SMELT ALL and the OPEN buttons are new and not much tested yet. `/pw debug` shows what Profession Wizard
   sees in the open profession window; please paste it into a comment if something doesn't work.
 - Trainer costs aren't counted in a route's cost yet.

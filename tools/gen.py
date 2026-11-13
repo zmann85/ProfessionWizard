@@ -25,7 +25,7 @@ for line in open(J):
     if g is None or g==0: g=y+25
     learn=max(1,min(learn,y))
     recs[p].append((sp,learn,y,g,cr or 0,n,ri or 0,1 if trainer else 0,name,[(int(i),int(c)) for i,c in mats]))
-out=['-- CraftList_Data (GNU GPL v2, see LICENSE.txt): recipe data for CraftList.','local ns = CraftListAPI','if not ns then return end','-- Generated from WoW Forever client data (build 1.60.1.70245, via wow-profession-journal, MIT)',
+out=['-- ProfessionWizard_Data (GNU GPL v2, see LICENSE.txt): recipe data for Profession Wizard.','local ns = ProfessionWizardAPI','if not ns then return end','-- Generated from WoW Forever client data (build 1.60.1.70245, via wow-profession-journal, MIT)',
      '-- plus AtlasLoot (GPL) learn levels and crafted amounts. Do not edit by hand: rerun gen.py.',
      '-- { spell, learn, yellow, grey, creates, amountMade, plansItem, fromTrainer, name, { item, count, item, count, ... } }',
      'ns.RECIPES = {']
@@ -37,7 +37,7 @@ for p in sorted(recs):
         out.append(f'    {{ {r[0]}, {r[1]}, {r[2]}, {r[3]}, {r[4]}, {r[5]}, {r[6]}, {r[7]}, "{nm}", {{ {mats} }} }},')
     out.append('  },')
 out.append('}')
-open('../CraftList_Data/Recipes.lua','w').write('\n'.join(out)+'\n')
+open('../ProfessionWizard_Data/Recipes.lua','w').write('\n'.join(out)+'\n')
 for p in sorted(recs): print(f"{PROF[p]:15s} {len(recs[p]):4d} recipes, learn level estimated for {est[PROF[p]]}")
 print('learn levels shifted from AtlasLoot:',shifted)
 # spot checks

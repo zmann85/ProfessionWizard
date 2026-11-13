@@ -1,12 +1,12 @@
-package-as: CraftList
+package-as: ProfessionWizard
 
 manual-changelog:
   filename: CHANGELOG.md
   markup-type: markdown
 
-# CraftList_Data (GPL v2, its own add-on) comes in the same zip, as a folder of its own next to CraftList
+# ProfessionWizard_Data (GPL v2, its own add-on) comes in the same zip, as a folder of its own next to Profession Wizard
 move-folders:
-  CraftList/CraftList_Data: CraftList_Data
+  ProfessionWizard/ProfessionWizard_Data: ProfessionWizard_Data
 
 ignore:
   - tools

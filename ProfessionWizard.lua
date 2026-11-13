@@ -1,12 +1,12 @@
 local ADDON, ns = ...
 
--- The recipe data is a separate add-on (CraftList_Data, GPL v2) that loads after CraftList and fills
+-- The recipe data is a separate add-on (ProfessionWizard_Data, GPL v2) that loads after Profession Wizard and fills
 -- ns.RECIPES through this global.
-CraftListAPI = ns
+ProfessionWizardAPI = ns
 ns.RECIPES = ns.RECIPES or {}
-local DATA_ADDON = "CraftList_Data"
+local DATA_ADDON = "ProfessionWizard_Data"
 
-local CALLER = "CraftList"
+local CALLER = "ProfessionWizard"
 local W, PAD, ROW_H, MAX_ROWS, STEP_H, MAX_STEPS = 620, 14, 20, 18, 16, 12
 local X_NEED, X_HAVE, W_HAVE, X_STAT = 250, 318, 160, 490
 
@@ -15,7 +15,7 @@ local GetItemCountRaw = (C_Item and C_Item.GetItemCount) or _G.GetItemCount
 local GetIcon = (C_Item and C_Item.GetItemIconByID) or _G.GetItemIcon
 
 local DEFAULTS = { plans = true, bank = true, buffer = 10, alts = true, mail = true, auto = true }
--- CraftListDB.minimap (LibDBIcon: hide, minimapPos) and CraftListDB.posChar[name-realm] (where each character
+-- ProfessionWizardDB.minimap (LibDBIcon: hide, minimapPos) and ProfessionWizardDB.posChar[name-realm] (where each character
 -- last dragged the window) are set up at load.
 
 -- a craft that only just pays for itself isn't worth the time: every craft counts as costing this much more
@@ -23,7 +23,7 @@ local PER_CRAFT = 50
 -- recipes this close to grey are skipped: too many crafts per point
 local MIN_CHANCE = 0.25
 
-local function Print(msg) DEFAULT_CHAT_FRAME:AddMessage("|cffdca77fCraftList|r: " .. msg) end
+local function Print(msg) DEFAULT_CHAT_FRAME:AddMessage("|cffdca77fProfession Wizard|r: " .. msg) end
 
 ---------------------------------------------------------------------------
 -- Look: same flat style as GoldSense / SmithList / Itinerary
@@ -230,7 +230,7 @@ local function myKey() return (UnitName("player") or "?") .. "-" .. (GetRealmNam
 local cache = {}
 
 local function applyFix(r)
-  local f = CraftListDB and CraftListDB.fix and CraftListDB.fix[r.spell]
+  local f = ProfessionWizardDB and ProfessionWizardDB.fix and ProfessionWizardDB.fix[r.spell]
   if f then r.y, r.g = f.y or r.y, f.g or r.g end
 end
 
@@ -273,17 +273,17 @@ end
 
 -- recipes this character knows, read from its profession windows
 local function knownSet()
-  CraftListDB.known = CraftListDB.known or {}
+  ProfessionWizardDB.known = ProfessionWizardDB.known or {}
   local k = myKey()
-  CraftListDB.known[k] = CraftListDB.known[k] or {}
-  return CraftListDB.known[k]
+  ProfessionWizardDB.known[k] = ProfessionWizardDB.known[k] or {}
+  return ProfessionWizardDB.known[k]
 end
 
 local function isKnown(r) return knownSet()[r.spell] and true or false end
 
 local function seenProf(pid)
-  CraftListDB.seen = CraftListDB.seen or {}
-  local s = CraftListDB.seen[myKey()]
+  ProfessionWizardDB.seen = ProfessionWizardDB.seen or {}
+  local s = ProfessionWizardDB.seen[myKey()]
   return s and s[pid]
 end
 
@@ -297,17 +297,17 @@ local function auctionatorPrice(id)
   if ok and type(p) == "number" and p > 0 then return p end
 end
 
--- prices from CraftList's own scan (SCAN AH), per realm
+-- prices from Profession Wizard's own scan (SCAN AH), per realm
 local function scanStore()
-  CraftListDB.scan = CraftListDB.scan or {}
+  ProfessionWizardDB.scan = ProfessionWizardDB.scan or {}
   local r = GetRealmName() or "?"
-  CraftListDB.scan[r] = CraftListDB.scan[r] or {}
-  return CraftListDB.scan[r]
+  ProfessionWizardDB.scan[r] = ProfessionWizardDB.scan[r] or {}
+  return ProfessionWizardDB.scan[r]
 end
 
 -- your own scan wins while it's less than a day old; otherwise Auctionator's price
 local function ahPrice(id)
-  local own = CraftListDB.scan and CraftListDB.scan[GetRealmName() or "?"]
+  local own = ProfessionWizardDB.scan and ProfessionWizardDB.scan[GetRealmName() or "?"]
   own = own and own[id]
   local a = auctionatorPrice(id)
   if own and own.p and (not a or time() - own.t < 86400) then return own.p end
@@ -324,7 +324,7 @@ local function sellPrice(id)
 end
 
 local function vendorBuy(id)
-  local seen = CraftListDB.vendor and CraftListDB.vendor[id]
+  local seen = ProfessionWizardDB.vendor and ProfessionWizardDB.vendor[id]
   if seen then return seen end
   if ns.VENDOR_ITEMS[id] then
     local s = sellPrice(id)
@@ -346,7 +346,7 @@ end
 -- read every vendor you open, so its prices are known from then on
 local function readMerchant()
   if not (GetMerchantNumItems and GetMerchantItemInfo and GetMerchantItemLink) then return end
-  CraftListDB.vendor = CraftListDB.vendor or {}
+  ProfessionWizardDB.vendor = ProfessionWizardDB.vendor or {}
   local n = GetMerchantNumItems() or 0
   for i = 1, n do
     local _, _, cost, qty, _, _, _, extended = GetMerchantItemInfo(i)
@@ -354,8 +354,8 @@ local function readMerchant()
     local id = link and tonumber(link:match("item:(%d+)"))
     if id and cost and cost > 0 and not extended then
       local each = cost / math.max(1, qty or 1)
-      local old = CraftListDB.vendor[id]
-      if not old or each < old then CraftListDB.vendor[id] = each end
+      local old = ProfessionWizardDB.vendor[id]
+      if not old or each < old then ProfessionWizardDB.vendor[id] = each end
     end
   end
 end
@@ -382,7 +382,7 @@ local function rawCount(id, withBank)
   return (ok and n) or 0
 end
 
-local function count(id) return rawCount(id, CraftListDB.bank) end
+local function count(id) return rawCount(id, ProfessionWizardDB.bank) end
 
 local function numSlots(bag)
   if C_Container and C_Container.GetContainerNumSlots then return C_Container.GetContainerNumSlots(bag) or 0 end
@@ -446,10 +446,10 @@ end
 local saveGoals -- set further down
 
 local function snapshot()
-  if not CraftListDB then return end
-  CraftListDB.chars = CraftListDB.chars or {}
+  if not ProfessionWizardDB then return end
+  ProfessionWizardDB.chars = ProfessionWizardDB.chars or {}
   local key = myKey()
-  local old = CraftListDB.chars[key] or {}
+  local old = ProfessionWizardDB.chars[key] or {}
   local skills = {}
   for pid, s in pairs(readSkills()) do skills[pid] = s.rank end
   local me = {
@@ -459,12 +459,12 @@ local function snapshot()
   }
   if bankOpen then me.bank = scanBags(bankList()); me.bankTime = time() end
   if mailOpen then me.mail = readInbox(); me.incoming = {}; me.mailTime = time() end
-  CraftListDB.chars[key] = me
+  ProfessionWizardDB.chars[key] = me
   if saveGoals then pcall(saveGoals) end
 end
 
 -- Alts saved by GoldSense (and skills saved by SmithList) count too, so nothing has to be
--- re-learned: whatever they saw more recently than CraftList is taken over.
+-- re-learned: whatever they saw more recently than Profession Wizard is taken over.
 local function filtered(t)
   local out = {}
   for id, n in pairs(t or {}) do if WANT[id] then out[id] = n end end
@@ -478,7 +478,7 @@ local function importOthers()
     for realm, chars in pairs(inv) do
       for name, c in pairs(chars) do
         local key = name .. "-" .. realm
-        local mine = CraftListDB.chars[key]
+        local mine = ProfessionWizardDB.chars[key]
         if key == me and mine and type(c) == "table" and not mine.mailTime and c.mailAt then
           mine.mail = filtered(c.mail); mine.mailTime = c.mailAt
         end
@@ -489,7 +489,7 @@ local function importOthers()
           if c.bankAt or not mine.bank then mine.bank = filtered(c.bank); mine.bankTime = c.bankAt end
           if c.mailAt or not mine.mail then mine.mail = filtered(c.mail); mine.mailTime = c.mailAt; mine.incoming = {} end
           mine.time = c.at
-          CraftListDB.chars[key] = mine
+          ProfessionWizardDB.chars[key] = mine
         end
       end
     end
@@ -497,12 +497,12 @@ local function importOthers()
   local sl = SmithListDB and SmithListDB.chars
   if type(sl) == "table" then
     for key, c in pairs(sl) do
-      local mine = CraftListDB.chars[key]
+      local mine = ProfessionWizardDB.chars[key]
       if key ~= me and type(c) == "table" then
         if not mine and c.realm then
           mine = { name = c.name, realm = c.realm, faction = c.faction, time = c.time, skills = {},
             bags = c.bags or {}, bank = c.bank or {}, mail = c.mail or {}, incoming = c.incoming or {} }
-          CraftListDB.chars[key] = mine
+          ProfessionWizardDB.chars[key] = mine
         end
         if mine and c.mining then
           mine.skills = mine.skills or {}
@@ -516,7 +516,7 @@ end
 local function alts()
   local list, key = {}, myKey()
   local realm, faction = GetRealmName(), UnitFactionGroup("player")
-  for k, c in pairs(CraftListDB.chars or {}) do
+  for k, c in pairs(ProfessionWizardDB.chars or {}) do
     if k ~= key and c.realm == realm and c.faction == faction then list[#list + 1] = c end
   end
   table.sort(list, function(a, b) return (a.name or "") < (b.name or "") end)
@@ -524,19 +524,19 @@ local function alts()
 end
 
 local function mailOf(c, id)
-  if not (CraftListDB.mail and c) then return 0 end
+  if not (ProfessionWizardDB.mail and c) then return 0 end
   return ((c.mail and c.mail[id]) or 0) + ((c.incoming and c.incoming[id]) or 0)
 end
 
-local function ownMail(id) return mailOf(CraftListDB.chars and CraftListDB.chars[myKey()], id) end
+local function ownMail(id) return mailOf(ProfessionWizardDB.chars and ProfessionWizardDB.chars[myKey()], id) end
 
 local noAlts = false -- set while working out what this character alone still needs
 local function altCount(id)
-  if noAlts or not CraftListDB.alts then return 0, {} end
+  if noAlts or not ProfessionWizardDB.alts then return 0, {} end
   local total, parts = 0, {}
   for _, c in ipairs(alts()) do
     local m = mailOf(c, id)
-    local n = ((c.bags and c.bags[id]) or 0) + (CraftListDB.bank and ((c.bank and c.bank[id]) or 0) or 0) + m
+    local n = ((c.bags and c.bags[id]) or 0) + (ProfessionWizardDB.bank and ((c.bank and c.bank[id]) or 0) or 0) + m
     if n > 0 then total = total + n; parts[#parts + 1] = { name = c.name, n = n, mail = m, time = c.time } end
   end
   return total, parts
@@ -550,7 +550,7 @@ end
 -- best skill among you and (if counted) your alts, e.g. Mining for smelting
 local function bestSkill(pid)
   local best = readSkill(pid) or 0
-  if CraftListDB.alts and not noAlts then
+  if ProfessionWizardDB.alts and not noAlts then
     for _, c in ipairs(alts()) do
       local v = c.skills and c.skills[pid]
       if v and v > best then best = v end
@@ -586,13 +586,13 @@ local function deliverOutgoing()
   local who = shortName(outgoing.to)
   local realm, faction = GetRealmName(), UnitFactionGroup("player")
   local target, targetKey
-  for k, c in pairs(CraftListDB.chars) do
+  for k, c in pairs(ProfessionWizardDB.chars) do
     if c.realm == realm and c.faction == faction and shortName(c.name) == who then target, targetKey = c, k end
   end
   if target and targetKey ~= myKey() then
     target.incoming = target.incoming or {}
     for id, n in pairs(outgoing.items) do target.incoming[id] = (target.incoming[id] or 0) + n end
-    for _, g in pairs(CraftListDB.goals or {}) do
+    for _, g in pairs(ProfessionWizardDB.goals or {}) do
       if g.owner == targetKey then
         g.sent = g.sent or {}
         for id, n in pairs(outgoing.items) do g.sent[id] = (g.sent[id] or 0) + n end
@@ -660,7 +660,7 @@ local function usable(r, from)
   if r.creates == 0 and r.prof ~= 333 then return false end
   if isKnown(r) then return true, 0 end
   if r.trainer then return true, 0 end
-  if r.plans > 0 and CraftListDB.plans then
+  if r.plans > 0 and ProfessionWizardDB.plans then
     local p, where = buyPrice(r.plans)
     if p then return true, p, where end
   end
@@ -729,10 +729,10 @@ end
 -- Saved routes, one per character and profession
 ---------------------------------------------------------------------------
 local function routeStore()
-  CraftListDB.routes = CraftListDB.routes or {}
+  ProfessionWizardDB.routes = ProfessionWizardDB.routes or {}
   local k = myKey()
-  CraftListDB.routes[k] = CraftListDB.routes[k] or {}
-  return CraftListDB.routes[k]
+  ProfessionWizardDB.routes[k] = ProfessionWizardDB.routes[k] or {}
+  return ProfessionWizardDB.routes[k]
 end
 
 local MILESTONES = { 75, 150, 225, 300 }
@@ -742,7 +742,7 @@ local function nextMilestone(cur)
 end
 
 local function targetFor(pid, cur)
-  local t = CraftListDB.targets and CraftListDB.targets[myKey() .. ":" .. pid]
+  local t = ProfessionWizardDB.targets and ProfessionWizardDB.targets[myKey() .. ":" .. pid]
   if not t or t <= cur then t = nextMilestone(cur) end
   return math.min(300, t)
 end
@@ -777,7 +777,7 @@ local function plan(route, cur, target)
           local p = chance(r, s)
           if p > 0 then exp = exp + 1 / p end
         end
-        local crafts = math.ceil(exp * (1 + (CraftListDB.buffer or 0) / 100) - 0.001)
+        local crafts = math.ceil(exp * (1 + (ProfessionWizardDB.buffer or 0) / 100) - 0.001)
         local last = steps[#steps]
         if last and last.r == r then
           last.to = b; last.crafts = last.crafts + crafts
@@ -925,16 +925,16 @@ local function goalFor(pid)
 end
 
 saveGoals = function()
-  if not CraftListDB then return end
-  CraftListDB.goals = CraftListDB.goals or {}
+  if not ProfessionWizardDB then return end
+  ProfessionWizardDB.goals = ProfessionWizardDB.goals or {}
   local me = myKey()
-  for k, g in pairs(CraftListDB.goals) do
-    if g.owner == me then CraftListDB.goals[k] = nil end
+  for k, g in pairs(ProfessionWizardDB.goals) do
+    if g.owner == me then ProfessionWizardDB.goals[k] = nil end
   end
   for pid in pairs(readSkills()) do
     if not PROF[pid].gather then
       local g = goalFor(pid)
-      if g then CraftListDB.goals[me .. ":" .. pid] = g end
+      if g then ProfessionWizardDB.goals[me .. ":" .. pid] = g end
     end
   end
 end
@@ -1081,10 +1081,10 @@ local function learnWindow()
   if not rc then return end
   local rank = readSkill(tsProf)
   local known = knownSet()
-  CraftListDB.fix = CraftListDB.fix or {}
-  CraftListDB.seen = CraftListDB.seen or {}
-  CraftListDB.seen[myKey()] = CraftListDB.seen[myKey()] or {}
-  CraftListDB.seen[myKey()][tsProf] = time()
+  ProfessionWizardDB.fix = ProfessionWizardDB.fix or {}
+  ProfessionWizardDB.seen = ProfessionWizardDB.seen or {}
+  ProfessionWizardDB.seen[myKey()] = ProfessionWizardDB.seen[myKey()] or {}
+  ProfessionWizardDB.seen[myKey()][tsProf] = time()
   local itemOf = {}
   for id, w in pairs(rc.byItem) do itemOf[w] = id end
   local fixed = 0
@@ -1107,7 +1107,7 @@ local function learnWindow()
         end
         if y ~= r.y or g ~= r.g then
           r.y, r.g = y, g
-          CraftListDB.fix[r.spell] = { y = y, g = g }
+          ProfessionWizardDB.fix[r.spell] = { y = y, g = g }
           fixed = fixed + 1
         end
       end
@@ -1214,8 +1214,8 @@ local smeltBtn -- secure button that casts Smelting (opening the smelting window
 local function shownProf()
   local have = readSkills()
   if current and have[current] then return current end
-  if CraftListDB.last and CraftListDB.last[myKey()] and have[CraftListDB.last[myKey()]] then
-    current = CraftListDB.last[myKey()]
+  if ProfessionWizardDB.last and ProfessionWizardDB.last[myKey()] and have[ProfessionWizardDB.last[myKey()]] then
+    current = ProfessionWizardDB.last[myKey()]
     return current
   end
   for _, p in ipairs(PROFS) do
@@ -1228,8 +1228,8 @@ end
 
 local function pick(pid)
   current = pid
-  CraftListDB.last = CraftListDB.last or {}
-  CraftListDB.last[myKey()] = pid
+  ProfessionWizardDB.last = ProfessionWizardDB.last or {}
+  ProfessionWizardDB.last[myKey()] = pid
   if refresh then refresh() end
 end
 
@@ -1237,8 +1237,8 @@ local function setTarget(v)
   local pid = shownProf()
   if not v or not pid then return end
   local cur = readSkill(pid) or 1
-  CraftListDB.targets = CraftListDB.targets or {}
-  CraftListDB.targets[myKey() .. ":" .. pid] = math.max(cur + 1, math.min(300, math.floor(v)))
+  ProfessionWizardDB.targets = ProfessionWizardDB.targets or {}
+  ProfessionWizardDB.targets[myKey() .. ":" .. pid] = math.max(cur + 1, math.min(300, math.floor(v)))
   refresh()
   pcall(saveGoals)
 end
@@ -1392,8 +1392,8 @@ end
 -- window (or the middle of the screen when none is open).
 local function savePos()
   local point, _, rel, x, y = frame:GetPoint()
-  CraftListDB.posChar = CraftListDB.posChar or {}
-  CraftListDB.posChar[myKey()] = { point = point, rel = rel, x = x, y = y }
+  ProfessionWizardDB.posChar = ProfessionWizardDB.posChar or {}
+  ProfessionWizardDB.posChar[myKey()] = { point = point, rel = rel, x = x, y = y }
 end
 
 local function profWindow()
@@ -1405,7 +1405,7 @@ end
 
 local function placeFrame()
   if not frame then return end
-  local p = CraftListDB.posChar and CraftListDB.posChar[myKey()]
+  local p = ProfessionWizardDB.posChar and ProfessionWizardDB.posChar[myKey()]
   frame:ClearAllPoints()
   if p and p.point then
     frame:SetPoint(p.point, UIParent, p.rel or p.point, p.x or 0, p.y or 0)
@@ -1424,29 +1424,29 @@ local function placeFrame()
 end
 
 -- The minimap button (LibDBIcon: drag it around the minimap, minimap button bags collect it; on by
--- default, CraftListDB.minimap keeps its place and whether it's hidden).
+-- default, ProfessionWizardDB.minimap keeps its place and whether it's hidden).
 local function setupMinimap()
   local LDB = LibStub and LibStub("LibDataBroker-1.1", true)
   local DBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
-  if not (LDB and DBIcon) or DBIcon:IsRegistered("CraftList") then return end
-  local obj = LDB:NewDataObject("CraftList", {
-    type = "launcher", text = "CraftList", icon = "Interface\\Icons\\Trade_BlackSmithing",
+  if not (LDB and DBIcon) or DBIcon:IsRegistered("ProfessionWizard") then return end
+  local obj = LDB:NewDataObject("ProfessionWizard", {
+    type = "launcher", text = "Profession Wizard", icon = "Interface\\Icons\\Trade_BlackSmithing",
     OnClick = function() if frame then frame:SetShown(not frame:IsShown()) end end,
     OnTooltipShow = function(tt)
-      tt:AddLine("CraftList")
+      tt:AddLine("Profession Wizard")
       tt:AddLine("|cffffffffClick|r open or close the list", 0.7, 0.7, 0.7)
       tt:AddLine("|cffffffffDrag|r move the button", 0.7, 0.7, 0.7)
       tt:AddLine("Hide it under SETTINGS in the list", 0.7, 0.7, 0.7)
     end,
   })
-  DBIcon:Register("CraftList", obj, CraftListDB.minimap)
+  DBIcon:Register("ProfessionWizard", obj, ProfessionWizardDB.minimap)
 end
 
 local function setMinimap(show)
-  CraftListDB.minimap.hide = (not show) or nil
+  ProfessionWizardDB.minimap.hide = (not show) or nil
   local DBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
-  if DBIcon and DBIcon:IsRegistered("CraftList") then
-    if show then DBIcon:Show("CraftList") else DBIcon:Hide("CraftList") end
+  if DBIcon and DBIcon:IsRegistered("ProfessionWizard") then
+    if show then DBIcon:Show("ProfessionWizard") else DBIcon:Hide("ProfessionWizard") end
   end
 end
 
@@ -1454,7 +1454,7 @@ local function build()
   local ar, ag, ab = accent()
   local s = scheme()
 
-  frame = CreateFrame("Frame", "CraftListFrame", UIParent)
+  frame = CreateFrame("Frame", "ProfessionWizardFrame", UIParent)
   frame:SetSize(W, 400)
   frame:SetPoint("CENTER", -200, 40)
   frame:SetMovable(true); frame:EnableMouse(true); frame:SetClampedToScreen(true)
@@ -1469,7 +1469,7 @@ local function build()
   end)
   frame:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); savePos(); refresh() end)
   frame:SetFrameStrata("HIGH")
-  tinsert(UISpecialFrames, "CraftListFrame")
+  tinsert(UISpecialFrames, "ProfessionWizardFrame")
 
   local bg = frame:CreateTexture(nil, "BACKGROUND"); bg:SetAllPoints()
   bg:SetColorTexture(s.bg[1], s.bg[2], s.bg[3], 0.94)
@@ -1482,7 +1482,7 @@ local function build()
   frame.bar:SetPoint("TOPLEFT", 1, -1); frame.bar:SetHeight(2); frame.bar:SetWidth(1)
 
   local eyebrow = text(frame, 11, ar, ag, ab, 0.9)
-  eyebrow:SetPoint("TOPLEFT", PAD, -12); eyebrow:SetText("CRAFTLIST")
+  eyebrow:SetPoint("TOPLEFT", PAD, -12); eyebrow:SetText("PROFESSION WIZARD")
 
   local close = CreateFrame("Button", nil, frame)
   close:SetSize(20, 20); close:SetPoint("TOPRIGHT", -8, -7)
@@ -1506,22 +1506,22 @@ local function build()
   opts.mini = chip(opts, "MINIMAP BUTTON", 192)
   opts.mini:SetPoint("TOP", 0, -8)
   opts.mini:SetScript("OnClick", function(self)
-    setMinimap(CraftListDB.minimap.hide and true or false); self:SetActive(not CraftListDB.minimap.hide)
+    setMinimap(ProfessionWizardDB.minimap.hide and true or false); self:SetActive(not ProfessionWizardDB.minimap.hide)
   end)
   tip(opts.mini, "Minimap button", "Click it to open or close the list. Drag it to move it around the minimap.")
   opts.auto = chip(opts, "OPEN WITH PROFESSIONS", 192)
   opts.auto:SetPoint("TOP", opts.mini, "BOTTOM", 0, -4)
   opts.auto:SetScript("OnClick", function(self)
-    CraftListDB.auto = (CraftListDB.auto == false); self:SetActive(CraftListDB.auto)
+    ProfessionWizardDB.auto = (ProfessionWizardDB.auto == false); self:SetActive(ProfessionWizardDB.auto)
   end)
   tip(opts.auto, "Open with your profession windows",
     "On: the list opens when you open a crafting profession window below skill 300.",
     "Until you drag the list somewhere, it opens next to the profession window.")
   opts.tut = chip(opts, "SHOW TUTORIAL", 192)
   opts.tut:SetPoint("TOP", opts.auto, "BOTTOM", 0, -4)
-  opts.tut:SetScript("OnClick", function() SlashCmdList.CRAFTLIST("tutorial") end)
+  opts.tut:SetScript("OnClick", function() SlashCmdList.PROFESSIONWIZARD("tutorial") end)
   opts:SetScript("OnShow", function(self)
-    self.mini:SetActive(not CraftListDB.minimap.hide); self.auto:SetActive(CraftListDB.auto ~= false)
+    self.mini:SetActive(not ProfessionWizardDB.minimap.hide); self.auto:SetActive(ProfessionWizardDB.auto ~= false)
   end)
   setBtn:SetScript("OnClick", function() opts:SetShown(not opts:IsShown()) end)
   frame:HookScript("OnHide", function() opts:Hide() end)
@@ -1600,7 +1600,7 @@ local function build()
   frame.plans = chip(frame, "BUY RECIPES", 100)
   frame.plans:SetPoint("TOPLEFT", PAD, -132)
   frame.plans:SetScript("OnClick", function()
-    CraftListDB.plans = not CraftListDB.plans
+    ProfessionWizardDB.plans = not ProfessionWizardDB.plans
     local pid = shownProf()
     if pid and routeStore()[pid] then routeStore()[pid].dirty = true end
     refresh()
@@ -1611,10 +1611,10 @@ local function build()
     "Click FIND CHEAPEST ROUTE after changing this.")
   frame.bank = chip(frame, "COUNT BANK", 96)
   frame.bank:SetPoint("LEFT", frame.plans, "RIGHT", 4, 0)
-  frame.bank:SetScript("OnClick", function() CraftListDB.bank = not CraftListDB.bank; refresh() end)
+  frame.bank:SetScript("OnClick", function() ProfessionWizardDB.bank = not ProfessionWizardDB.bank; refresh() end)
   frame.alts = chip(frame, "COUNT ALTS", 90)
   frame.alts:SetPoint("LEFT", frame.bank, "RIGHT", 4, 0)
-  frame.alts:SetScript("OnClick", function() CraftListDB.alts = not CraftListDB.alts; refresh() end)
+  frame.alts:SetScript("OnClick", function() ProfessionWizardDB.alts = not ProfessionWizardDB.alts; refresh() end)
   tip(frame.alts, "Your other characters", function()
     local list = alts()
     if #list == 0 then
@@ -1626,13 +1626,13 @@ local function build()
   end)
   frame.mail = chip(frame, "COUNT MAIL", 86)
   frame.mail:SetPoint("LEFT", frame.alts, "RIGHT", 4, 0)
-  frame.mail:SetScript("OnClick", function() CraftListDB.mail = not CraftListDB.mail; refresh() end)
+  frame.mail:SetScript("OnClick", function() ProfessionWizardDB.mail = not ProfessionWizardDB.mail; refresh() end)
   tip(frame.mail, "Mail", "Your mailbox is read each time you open it. Things you mail to your own characters count on them straight away.")
   frame.buffer = chip(frame, "SPARE 10%", 86)
   frame.buffer:SetPoint("LEFT", frame.mail, "RIGHT", 4, 0)
   frame.buffer:SetScript("OnClick", function()
-    local b = CraftListDB.buffer or 0
-    CraftListDB.buffer = (b == 0 and 10) or (b == 10 and 25) or 0
+    local b = ProfessionWizardDB.buffer or 0
+    ProfessionWizardDB.buffer = (b == 0 and 10) or (b == 10 and 25) or 0
     refresh()
   end)
   tip(frame.buffer, "Spare crafts", "Yellow and green crafts don't always give a point. This adds extra materials for bad luck.")
@@ -1738,7 +1738,7 @@ local function build()
   frame.smeltAll:Hide()
 
   -- OPEN SMELTING: a real spell cast, so it has to be a secure button
-  smeltBtn = chip(UIParent, "OPEN SMELTING", 120, "SecureActionButtonTemplate", "CraftListSmeltButton")
+  smeltBtn = chip(UIParent, "OPEN SMELTING", 120, "SecureActionButtonTemplate", "ProfessionWizardSmeltButton")
   smeltBtn:SetFrameStrata("DIALOG")
   local down = GetCVarBool and GetCVarBool("ActionButtonUseKeyDown")
   smeltBtn:RegisterForClicks(down and "AnyDown" or "AnyUp")
@@ -1748,7 +1748,7 @@ local function build()
   smeltBtn:Hide()
 
   -- OPEN SMITHING etc.: opens the profession window so the CRAFT buttons can work
-  openBtn = chip(UIParent, "OPEN", 116, "SecureActionButtonTemplate", "CraftListOpenButton")
+  openBtn = chip(UIParent, "OPEN", 116, "SecureActionButtonTemplate", "ProfessionWizardOpenButton")
   openBtn:SetFrameStrata("DIALOG")
   openBtn:RegisterForClicks(down and "AnyDown" or "AnyUp")
   openBtn:SetAttribute("type", "spell")
@@ -1778,7 +1778,7 @@ end
 local function sheetList()
   local list = {}
   local realm, faction, me = GetRealmName(), UnitFactionGroup("player"), myKey()
-  for k, g in pairs(CraftListDB.goals or {}) do
+  for k, g in pairs(ProfessionWizardDB.goals or {}) do
     if g.owner ~= me and g.realm == realm and g.faction == faction and g.rows then g.key = k; list[#list + 1] = g end
   end
   table.sort(list, function(a, b) return (a.time or 0) > (b.time or 0) end)
@@ -1919,7 +1919,7 @@ local function scanList(pid, from, to)
   for _, r in ipairs(recipes(pid).list) do
     if r.g > from and r.learn < to and (r.creates > 0 or r.prof == 333) then
       local known = isKnown(r)
-      if known or r.trainer or (r.plans > 0 and CraftListDB.plans) then
+      if known or r.trainer or (r.plans > 0 and ProfessionWizardDB.plans) then
         for _, m in ipairs(r.mats) do add(m[1], 0) end
         if not known and not r.trainer then add(r.plans, 2) end
       end
@@ -1946,7 +1946,7 @@ local function priceState(pid, cur, target)
   local c = priceCache[key]
   if c and GetTime() - c.at < 10 then return c end
   local hasAuctionator = (Auctionator and Auctionator.API and Auctionator.API.v1) and true or false
-  local own = CraftListDB.scan and CraftListDB.scan[GetRealmName() or "?"] or {}
+  local own = ProfessionWizardDB.scan and ProfessionWizardDB.scan[GetRealmName() or "?"] or {}
   local total, priced, fresh, newest = 0, 0, 0, nil
   local ok, list = pcall(scanList, pid, cur, target)
   for _, id in ipairs(ok and list or {}) do
@@ -1979,7 +1979,7 @@ local function priceHint(ps)
     elseif ps.auctionator then
       return "Auctionator has no prices for these materials yet, so the route can't be worked out. Go to an auction house and click SCAN AH (it looks up just what this route needs), then FIND CHEAPEST ROUTE."
     end
-    return "No auction house prices yet, so the route can't be worked out. Go to an auction house and click SCAN AH: CraftList looks up just the materials this route needs, no other addon required. Then click FIND CHEAPEST ROUTE."
+    return "No auction house prices yet, so the route can't be worked out. Go to an auction house and click SCAN AH: Profession Wizard looks up just the materials this route needs, no other addon required. Then click FIND CHEAPEST ROUTE."
   end
   if ahOpen then
     return "Most of your prices are over a day old. You're at the auction house: click SCAN AH for fresh ones, then FIND CHEAPEST ROUTE."
@@ -2220,8 +2220,8 @@ local function sortRows(list)
 end
 
 ---------------------------------------------------------------------------
--- First-time tutorial: walks a new user through the window once (CraftListDB.tutorialDone);
--- SETTINGS > SHOW TUTORIAL or /cl tutorial plays it again.
+-- First-time tutorial: walks a new user through the window once (ProfessionWizardDB.tutorialDone);
+-- SETTINGS > SHOW TUTORIAL or /pw tutorial plays it again.
 ---------------------------------------------------------------------------
 local tut -- { step, box, hl }
 local Tut = {}
@@ -2250,7 +2250,7 @@ end
 
 function Tut.stop(done)
   if tut then tut.box:Hide(); tut.hl:Hide() end
-  if done then CraftListDB.tutorialDone = true end
+  if done then ProfessionWizardDB.tutorialDone = true end
   if tut then tut.step = nil end
 end
 
@@ -2329,7 +2329,7 @@ refresh = function()
     if first then viewing = first.key end
   end
   if viewing then
-    local g = CraftListDB.goals and CraftListDB.goals[viewing]
+    local g = ProfessionWizardDB.goals and ProfessionWizardDB.goals[viewing]
     if g and g.rows then renderSheet(g, warm, green, red, dim); return end
     viewing = nil
   end
@@ -2384,22 +2384,22 @@ refresh = function()
 
   if not frame.eb:HasFocus() then frame.eb:SetText(tostring(target)) end
   for _, c in ipairs(frame.milestones) do c:SetActive(c.value == target); c:SetShown(c.value > cur) end
-  frame.plans:SetActive(CraftListDB.plans and true or false)
-  frame.bank:SetActive(CraftListDB.bank and true or false)
-  frame.alts:SetActive(CraftListDB.alts and true or false)
-  frame.mail:SetActive(CraftListDB.mail and true or false)
-  frame.buffer.text:SetText("SPARE " .. (CraftListDB.buffer or 0) .. "%")
-  frame.buffer:SetActive((CraftListDB.buffer or 0) > 0)
+  frame.plans:SetActive(ProfessionWizardDB.plans and true or false)
+  frame.bank:SetActive(ProfessionWizardDB.bank and true or false)
+  frame.alts:SetActive(ProfessionWizardDB.alts and true or false)
+  frame.mail:SetActive(ProfessionWizardDB.mail and true or false)
+  frame.buffer.text:SetText("SPARE " .. (ProfessionWizardDB.buffer or 0) .. "%")
+  frame.buffer:SetActive((ProfessionWizardDB.buffer or 0) > 0)
   scanLabel()
 
   local route = cur < 300 and routeFor(pid, cur, target) or nil
   frame.find:SetActive(route and route.dirty or false)
 
   -- sub line
-  local nAlts = CraftListDB.alts and #alts() or 0
+  local nAlts = ProfessionWizardDB.alts and #alts() or 0
   local what = "bags"
-  if CraftListDB.bank then what = what .. ", bank" end
-  if CraftListDB.mail then what = what .. ", mail" end
+  if ProfessionWizardDB.bank then what = what .. ", bank" end
+  if ProfessionWizardDB.mail then what = what .. ", mail" end
   local sub = string.format("counting %s%s", what, nAlts > 0 and string.format(" on you + %d alt%s", nAlts, nAlts == 1 and "" or "s") or "")
   local mining = bestSkill(MINING)
   if mining > 0 then sub = "Mining " .. mining .. "  ·  " .. sub end
@@ -2637,7 +2637,7 @@ end
 local function otherGoals()
   local list = {}
   local realm, faction, me = GetRealmName(), UnitFactionGroup("player"), myKey()
-  for k, g in pairs(CraftListDB.goals or {}) do
+  for k, g in pairs(ProfessionWizardDB.goals or {}) do
     if g.owner ~= me and g.realm == realm and g.faction == faction and next(g.needs or {}) then g.key = k; list[#list + 1] = g end
   end
   table.sort(list, function(a, b) return (a.time or 0) > (b.time or 0) end)
@@ -2733,7 +2733,7 @@ local function sendNow()
   mp.send.text:SetText("ATTACHING...")
   local pickup = (C_Container and C_Container.PickupContainerItem) or PickupContainerItem
   local split = (C_Container and C_Container.SplitContainerItem) or SplitContainerItem
-  local subject = "CraftList: " .. profName(g.pid)
+  local subject = "Profession Wizard: " .. profName(g.pid)
   local i = 0
   local function finish()
     local box = findToBox()
@@ -2772,7 +2772,7 @@ local function mpBuild()
   if not anchor then return end
   local ar, ag, ab = accent()
   local s = scheme()
-  mp = CreateFrame("Frame", "CraftListMailPanel", anchor)
+  mp = CreateFrame("Frame", "ProfessionWizardMailPanel", anchor)
   mp:SetSize(MP_W, 120)
   mp:SetFrameStrata(anchor:GetFrameStrata())
   local bg = mp:CreateTexture(nil, "BACKGROUND"); bg:SetAllPoints()
@@ -2780,7 +2780,7 @@ local function mpBuild()
   edges(mp, 1, 1, 1, 0.15)
   local top = mp:CreateTexture(nil, "ARTWORK"); top:SetColorTexture(ar, ag, ab, 0.95)
   top:SetPoint("TOPLEFT", 1, -1); top:SetPoint("TOPRIGHT", -1, -1); top:SetHeight(2)
-  local head = text(mp, 11, ar, ag, ab, 0.9); head:SetPoint("TOPLEFT", MP_PAD, -11); head:SetText("CRAFTLIST")
+  local head = text(mp, 11, ar, ag, ab, 0.9); head:SetPoint("TOPLEFT", MP_PAD, -11); head:SetText("PROFESSION WIZARD")
   for i = 1, 4 do
     local c = chip(mp, "", MP_W - MP_PAD * 2)
     c:SetHeight(18)
@@ -2903,7 +2903,7 @@ local function onWindowOpen(mode)
       local rank = readSkill(tsProf)
       if rank and rank < 300 and frame then
         current = tsProf
-        if CraftListDB.auto ~= false and not frame:IsShown() then frame:Show()
+        if ProfessionWizardDB.auto ~= false and not frame:IsShown() then frame:Show()
         elseif frame:IsShown() then placeFrame() end
       end
     end
@@ -2916,10 +2916,10 @@ do
   local inner = refresh
   refresh = function(...)
     inner(...)
-    if frame and frame:IsShown() and not CraftListDB.tutorialDone and not (tut and tut.step)
+    if frame and frame:IsShown() and not ProfessionWizardDB.tutorialDone and not (tut and tut.step)
       and frame.find and frame.find:IsShown() then
       C_Timer.After(0.3, function()
-        if frame:IsShown() and not CraftListDB.tutorialDone and not (tut and tut.step) and frame.find:IsShown() then
+        if frame:IsShown() and not ProfessionWizardDB.tutorialDone and not (tut and tut.step) and frame.find:IsShown() then
           Tut.start()
         end
       end)
@@ -2932,21 +2932,21 @@ ev:RegisterEvent("ADDON_LOADED")
 ev:RegisterEvent("PLAYER_LOGIN")
 local inited = false
 ev:SetScript("OnEvent", function(self, event, arg1)
-  -- Start once CraftList_Data has loaded (it loads right after CraftList); at login at the latest, so
-  -- CraftList still opens when the data folder is missing or turned off.
+  -- Start once ProfessionWizard_Data has loaded (it loads right after Profession Wizard); at login at the latest, so
+  -- Profession Wizard still opens when the data folder is missing or turned off.
   if not inited and ((event == "ADDON_LOADED" and arg1 == DATA_ADDON) or event == "PLAYER_LOGIN") then
     inited = true
     if not next(ns.RECIPES) then
-      print("|cffff8800CraftList:|r the CraftList_Data folder is missing or turned off, so there are no recipes. "
-        .. "Install both folders from the download and turn CraftList_Data on in the AddOns list.")
+      print("|cffff8800Profession Wizard:|r the ProfessionWizard_Data folder is missing or turned off, so there are no recipes. "
+        .. "Install both folders from the download and turn ProfessionWizard_Data on in the AddOns list.")
     end
     buildWant()
-    CraftListDB = CraftListDB or {}
-    for k, v in pairs(DEFAULTS) do if CraftListDB[k] == nil then CraftListDB[k] = v end end
-    CraftListDB.chars = CraftListDB.chars or {}
-    CraftListDB.minimap = CraftListDB.minimap or {}
-    CraftListDB.posChar = CraftListDB.posChar or {}
-    CraftListDB.pos = nil -- the old account-wide place: each character now keeps its own
+    ProfessionWizardDB = ProfessionWizardDB or {}
+    for k, v in pairs(DEFAULTS) do if ProfessionWizardDB[k] == nil then ProfessionWizardDB[k] = v end end
+    ProfessionWizardDB.chars = ProfessionWizardDB.chars or {}
+    ProfessionWizardDB.minimap = ProfessionWizardDB.minimap or {}
+    ProfessionWizardDB.posChar = ProfessionWizardDB.posChar or {}
+    ProfessionWizardDB.pos = nil -- the old account-wide place: each character now keeps its own
     pcall(importOthers)
     build()
     pcall(setupMinimap)
@@ -3027,27 +3027,27 @@ local function profFromArg(a)
   end
 end
 
-SLASH_CRAFTLIST1 = "/craftlist"
-SLASH_CRAFTLIST2 = "/cl"
-SlashCmdList.CRAFTLIST = function(msg)
+SLASH_PROFESSIONWIZARD1 = "/professionwizard"
+SLASH_PROFESSIONWIZARD2 = "/pw"
+SlashCmdList.PROFESSIONWIZARD = function(msg)
   msg = strtrim((msg or ""):lower())
   local n = tonumber(msg)
   if n then frame:Show(); setTarget(n); return end
   if msg == "reset" then
-    CraftListDB.posChar[myKey()] = nil
+    ProfessionWizardDB.posChar[myKey()] = nil
     placeFrame(); frame:Show(); return
   end
   if msg == "tutorial" then
     frame:Show(); refresh(); Tut.start(); return
   end
   if msg == "minimap" then
-    setMinimap(CraftListDB.minimap.hide and true or false)
-    Print("minimap button: " .. (CraftListDB.minimap.hide and "hidden" or "shown"))
+    setMinimap(ProfessionWizardDB.minimap.hide and true or false)
+    Print("minimap button: " .. (ProfessionWizardDB.minimap.hide and "hidden" or "shown"))
     return
   end
   if msg == "auto" then
-    CraftListDB.auto = (CraftListDB.auto == false)
-    Print("open with your profession windows: " .. (CraftListDB.auto and "on" or "off"))
+    ProfessionWizardDB.auto = (ProfessionWizardDB.auto == false)
+    Print("open with your profession windows: " .. (ProfessionWizardDB.auto and "on" or "off"))
     return
   end
   if msg == "alts" then
@@ -3058,7 +3058,7 @@ SlashCmdList.CRAFTLIST = function(msg)
   end
   if msg == "vendors" then
     local k = 0
-    for _ in pairs(CraftListDB.vendor or {}) do k = k + 1 end
+    for _ in pairs(ProfessionWizardDB.vendor or {}) do k = k + 1 end
     Print(k .. " vendor prices seen so far.")
     return
   end
@@ -3082,32 +3082,32 @@ SlashCmdList.CRAFTLIST = function(msg)
   end
   if msg == "colors" then
     local k = 0
-    for _ in pairs(CraftListDB.fix or {}) do k = k + 1 end
+    for _ in pairs(ProfessionWizardDB.fix or {}) do k = k + 1 end
     Print(k .. " recipe colors corrected from your profession windows.")
     return
   end
   local who = msg:match("^forget%s+(.+)$")
   if who then
     local gone
-    for k, c in pairs(CraftListDB.chars or {}) do
+    for k, c in pairs(ProfessionWizardDB.chars or {}) do
       if (c.name or ""):lower() == who then
-        CraftListDB.chars[k] = nil; gone = c.name
-        for gk, g in pairs(CraftListDB.goals or {}) do if g.owner == k then CraftListDB.goals[gk] = nil end end
+        ProfessionWizardDB.chars[k] = nil; gone = c.name
+        for gk, g in pairs(ProfessionWizardDB.goals or {}) do if g.owner == k then ProfessionWizardDB.goals[gk] = nil end end
       end
     end
     Print(gone and ("forgot " .. gone .. ".") or ("no saved character called " .. who .. "."))
     refresh(); return
   end
   if msg == "help" then
-    Print("/cl  open or close the list")
-    Print("/cl tailoring  show a profession (or alch, smith, leather, eng, ench, cook, first, poisons)")
-    Print("/cl 225  check materials up to skill 225")
-    Print("/cl alts  list the alts it's counting")
-    Print("/cl auto  open (or not) with your profession windows")
-    Print("/cl forget Name  stop counting a character")
-    Print("/cl minimap  show or hide the minimap button")
-    Print("/cl tutorial  the first-time walkthrough again")
-    Print("/cl reset  forget where you dragged the window: it opens next to the profession window again")
+    Print("/pw  open or close the list")
+    Print("/pw tailoring  show a profession (or alch, smith, leather, eng, ench, cook, first, poisons)")
+    Print("/pw 225  check materials up to skill 225")
+    Print("/pw alts  list the alts it's counting")
+    Print("/pw auto  open (or not) with your profession windows")
+    Print("/pw forget Name  stop counting a character")
+    Print("/pw minimap  show or hide the minimap button")
+    Print("/pw tutorial  the first-time walkthrough again")
+    Print("/pw reset  forget where you dragged the window: it opens next to the profession window again")
     return
   end
   local pid = profFromArg(msg)
