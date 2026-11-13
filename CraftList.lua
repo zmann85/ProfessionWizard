@@ -15,6 +15,8 @@ local GetItemCountRaw = (C_Item and C_Item.GetItemCount) or _G.GetItemCount
 local GetIcon = (C_Item and C_Item.GetItemIconByID) or _G.GetItemIcon
 
 local DEFAULTS = { plans = true, bank = true, buffer = 10, alts = true, mail = true, auto = true }
+-- CraftListDB.minimap (LibDBIcon: hide, minimapPos) and CraftListDB.posChar[name-realm] (where each character
+-- last dragged the window) are set up at load.
 
 -- a craft that only just pays for itself isn't worth the time: every craft counts as costing this much more
 local PER_CRAFT = 50
@@ -1386,9 +1388,66 @@ local function makeStep(i)
   return l
 end
 
+-- Where the window goes: where this character last dragged it; until it has, next to the open profession
+-- window (or the middle of the screen when none is open).
 local function savePos()
   local point, _, rel, x, y = frame:GetPoint()
-  CraftListDB.pos = { point = point, rel = rel, x = x, y = y }
+  CraftListDB.posChar = CraftListDB.posChar or {}
+  CraftListDB.posChar[myKey()] = { point = point, rel = rel, x = x, y = y }
+end
+
+local function profWindow()
+  for _, n in ipairs({ "TradeSkillFrame", "CraftFrame", "ProfessionsFrame" }) do
+    local f = _G[n]
+    if f and f.IsShown and f:IsShown() and f:GetRight() and f:GetTop() then return f end
+  end
+end
+
+local function placeFrame()
+  if not frame then return end
+  local p = CraftListDB.posChar and CraftListDB.posChar[myKey()]
+  frame:ClearAllPoints()
+  if p and p.point then
+    frame:SetPoint(p.point, UIParent, p.rel or p.point, p.x or 0, p.y or 0)
+    return
+  end
+  local pf = profWindow()
+  if not pf then frame:SetPoint("CENTER", -200, 40); return end
+  local k = pf:GetEffectiveScale() / frame:GetEffectiveScale()
+  local left, right, top = pf:GetLeft() * k, pf:GetRight() * k, pf:GetTop() * k
+  local screenW = UIParent:GetWidth() * UIParent:GetEffectiveScale() / frame:GetEffectiveScale()
+  if right + 4 + W <= screenW or left - 4 - W < 0 then
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", right + 4, top)
+  else
+    frame:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", left - 4, top)
+  end
+end
+
+-- The minimap button (LibDBIcon: drag it around the minimap, minimap button bags collect it; on by
+-- default, CraftListDB.minimap keeps its place and whether it's hidden).
+local function setupMinimap()
+  local LDB = LibStub and LibStub("LibDataBroker-1.1", true)
+  local DBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
+  if not (LDB and DBIcon) or DBIcon:IsRegistered("CraftList") then return end
+  local obj = LDB:NewDataObject("CraftList", {
+    type = "launcher", text = "CraftList", icon = "Interface\\Icons\\Trade_BlackSmithing",
+    OnClick = function() if frame then frame:SetShown(not frame:IsShown()) end end,
+    OnTooltipShow = function(tt)
+      tt:AddLine("CraftList")
+      tt:AddLine("|cffffffffClick|r open or close the list", 0.7, 0.7, 0.7)
+      tt:AddLine("|cffffffffDrag|r move the button", 0.7, 0.7, 0.7)
+      tt:AddLine("Hide it under SETTINGS in the list", 0.7, 0.7, 0.7)
+    end,
+  })
+  DBIcon:Register("CraftList", obj, CraftListDB.minimap)
+end
+
+local function setMinimap(show)
+  CraftListDB.minimap.hide = (not show) or nil
+  local DBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
+  if DBIcon and DBIcon:IsRegistered("CraftList") then
+    if show then DBIcon:Show("CraftList") else DBIcon:Hide("CraftList") end
+  end
 end
 
 local function build()
@@ -1397,10 +1456,9 @@ local function build()
 
   frame = CreateFrame("Frame", "CraftListFrame", UIParent)
   frame:SetSize(W, 400)
-  local p = CraftListDB.pos
-  if p and p.point then frame:SetPoint(p.point, UIParent, p.rel or p.point, p.x or 0, p.y or 0)
-  else frame:SetPoint("CENTER", -200, 40) end
+  frame:SetPoint("CENTER", -200, 40)
   frame:SetMovable(true); frame:EnableMouse(true); frame:SetClampedToScreen(true)
+  frame:HookScript("OnShow", placeFrame)
   frame:RegisterForDrag("LeftButton")
   frame:SetScript("OnDragStart", function(self)
     if not (InCombatLockdown and InCombatLockdown()) then
@@ -1432,6 +1490,42 @@ local function build()
   close:SetScript("OnEnter", function(self) self.fs:SetTextColor(1, 0.45, 0.4, 1) end)
   close:SetScript("OnLeave", function(self) self.fs:SetTextColor(1, 1, 1, 0.4) end)
   close:SetScript("OnClick", function() frame:Hide() end)
+
+  -- SETTINGS: a small panel under the header with the window's own switches
+  local setBtn = CreateFrame("Button", nil, frame)
+  setBtn:SetSize(64, 20); setBtn:SetPoint("RIGHT", close, "LEFT", -4, 0)
+  setBtn.fs = text(setBtn, 11, 1, 1, 1, 0.4); setBtn.fs:SetPoint("RIGHT"); setBtn.fs:SetText("SETTINGS")
+  setBtn:SetScript("OnEnter", function(self) self.fs:SetTextColor(1, 1, 1, 0.85) end)
+  setBtn:SetScript("OnLeave", function(self) self.fs:SetTextColor(1, 1, 1, 0.4) end)
+  local opts = CreateFrame("Frame", nil, frame)
+  opts:SetSize(208, 88); opts:SetPoint("TOPRIGHT", -8, -28)
+  opts:SetFrameLevel(frame:GetFrameLevel() + 20); opts:EnableMouse(true); opts:Hide()
+  local obg = opts:CreateTexture(nil, "BACKGROUND"); obg:SetAllPoints()
+  obg:SetColorTexture(s.bg[1], s.bg[2], s.bg[3], 1)
+  edges(opts, 1, 1, 1, 0.25)
+  opts.mini = chip(opts, "MINIMAP BUTTON", 192)
+  opts.mini:SetPoint("TOP", 0, -8)
+  opts.mini:SetScript("OnClick", function(self)
+    setMinimap(CraftListDB.minimap.hide and true or false); self:SetActive(not CraftListDB.minimap.hide)
+  end)
+  tip(opts.mini, "Minimap button", "Click it to open or close the list. Drag it to move it around the minimap.")
+  opts.auto = chip(opts, "OPEN WITH PROFESSIONS", 192)
+  opts.auto:SetPoint("TOP", opts.mini, "BOTTOM", 0, -4)
+  opts.auto:SetScript("OnClick", function(self)
+    CraftListDB.auto = (CraftListDB.auto == false); self:SetActive(CraftListDB.auto)
+  end)
+  tip(opts.auto, "Open with your profession windows",
+    "On: the list opens when you open a crafting profession window below skill 300.",
+    "Until you drag the list somewhere, it opens next to the profession window.")
+  opts.tut = chip(opts, "SHOW TUTORIAL", 192)
+  opts.tut:SetPoint("TOP", opts.auto, "BOTTOM", 0, -4)
+  opts.tut:SetScript("OnClick", function() SlashCmdList.CRAFTLIST("tutorial") end)
+  opts:SetScript("OnShow", function(self)
+    self.mini:SetActive(not CraftListDB.minimap.hide); self.auto:SetActive(CraftListDB.auto ~= false)
+  end)
+  setBtn:SetScript("OnClick", function() opts:SetShown(not opts:IsShown()) end)
+  frame:HookScript("OnHide", function() opts:Hide() end)
+  frame.opts = opts
 
   frame.title = text(frame, 14, 1, 1, 1, 0.95)
   frame.title:SetPoint("TOPLEFT", PAD, -32)
@@ -1586,6 +1680,19 @@ local function build()
   end)
   cast:Hide()
   frame.cast = cast
+
+  -- the price hint: shown above the route while the prices for it are missing or old
+  local hint = CreateFrame("Frame", nil, frame)
+  hint:SetSize(W - PAD * 2, 30)
+  local hbg = hint:CreateTexture(nil, "BACKGROUND"); hbg:SetAllPoints()
+  hbg:SetColorTexture(s.warm[1], s.warm[2], s.warm[3], 0.08)
+  local hbar = hint:CreateTexture(nil, "ARTWORK")
+  hbar:SetColorTexture(s.warm[1], s.warm[2], s.warm[3], 0.9)
+  hbar:SetPoint("TOPLEFT"); hbar:SetPoint("BOTTOMLEFT"); hbar:SetWidth(2)
+  hint.fs = text(hint, 11, s.warm[1], s.warm[2], s.warm[3], 0.95)
+  hint.fs:SetPoint("TOPLEFT", 10, -6); hint.fs:SetWidth(W - PAD * 2 - 20); hint.fs:SetWordWrap(true)
+  hint:Hide()
+  frame.hint = hint
 
   frame.stepsHead = text(frame, 11, ar, ag, ab, 0.9)
   frame.stepsHead:SetText("CRAFTS")
@@ -1821,9 +1928,69 @@ local function scanList(pid, from, to)
   return list
 end
 
+-- How good the prices are for what this profession needs from cur to target:
+--   "none"  most materials have no auction house price at all (never scanned)
+--   "old"   they have prices, but most are older than a day (own scan or Auctionator)
+--   "ok"    fresh enough
+-- plus whether Auctionator is installed and how old the newest price is (days). Cached for a few seconds.
+local priceCache = {}
+local function auctionatorAge(id)
+  local a = Auctionator and Auctionator.API and Auctionator.API.v1
+  if not (a and a.GetAuctionAgeByItemID) then return nil end
+  local ok, d = pcall(a.GetAuctionAgeByItemID, CALLER, id)
+  if ok and type(d) == "number" then return d end
+end
+
+local function priceState(pid, cur, target)
+  local key = pid .. ":" .. cur .. ":" .. target
+  local c = priceCache[key]
+  if c and GetTime() - c.at < 10 then return c end
+  local hasAuctionator = (Auctionator and Auctionator.API and Auctionator.API.v1) and true or false
+  local own = CraftListDB.scan and CraftListDB.scan[GetRealmName() or "?"] or {}
+  local total, priced, fresh, newest = 0, 0, 0, nil
+  local ok, list = pcall(scanList, pid, cur, target)
+  for _, id in ipairs(ok and list or {}) do
+    total = total + 1
+    local o = own[id]
+    local ageO = o and o.p and o.t and (time() - o.t) / 86400
+    local ageA = auctionatorPrice(id) and (auctionatorAge(id) or 0)
+    local age = (ageO and ageA and math.min(ageO, ageA)) or ageO or ageA
+    if age then
+      priced = priced + 1
+      if age < 1 then fresh = fresh + 1 end
+      if not newest or age < newest then newest = age end
+    end
+  end
+  local state = "ok"
+  if total > 0 and priced < total * 0.5 then state = "none"
+  elseif total > 0 and fresh < priced * 0.5 then state = "old" end
+  c = { at = GetTime(), state = state, auctionator = hasAuctionator, newest = newest, total = total, priced = priced }
+  priceCache[key] = c
+  return c
+end
+
+-- the words for the price hint, or nil when the prices are fine
+local function priceHint(ps)
+  if not ps or ps.state == "ok" then return nil end
+  local n = ps.total
+  if ps.state == "none" then
+    if ahOpen then
+      return string.format("No prices yet for this route's %d materials. You're at the auction house: click SCAN AH, then FIND CHEAPEST ROUTE.", n)
+    elseif ps.auctionator then
+      return "Auctionator has no prices for these materials yet, so the route can't be worked out. Go to an auction house and click SCAN AH (it looks up just what this route needs), then FIND CHEAPEST ROUTE."
+    end
+    return "No auction house prices yet, so the route can't be worked out. Go to an auction house and click SCAN AH: CraftList looks up just the materials this route needs, no other addon required. Then click FIND CHEAPEST ROUTE."
+  end
+  if ahOpen then
+    return "Most of your prices are over a day old. You're at the auction house: click SCAN AH for fresh ones, then FIND CHEAPEST ROUTE."
+  end
+  return "Most of your prices for this route are over a day old and the cheapest route may have changed. Next time you're at an auction house, click SCAN AH, then FIND CHEAPEST ROUTE."
+end
+
 local function finishScan(stopped)
   local s = scan
   scan = nil
+  for k in pairs(priceCache) do priceCache[k] = nil end
   scanFrame:Hide()
   scanLabel()
   if not s then return end
@@ -2052,6 +2219,101 @@ local function sortRows(list)
   end)
 end
 
+---------------------------------------------------------------------------
+-- First-time tutorial: walks a new user through the window once (CraftListDB.tutorialDone);
+-- SETTINGS > SHOW TUTORIAL or /cl tutorial plays it again.
+---------------------------------------------------------------------------
+local tut -- { step, box, hl }
+local Tut = {}
+
+function Tut.steps()
+  local hasA = Auctionator and Auctionator.API and Auctionator.API.v1
+  return {
+    { from = function() return frame.eb, -28 end, to = function() return frame.milestones[#frame.milestones] end,
+      title = "Your goal",
+      body = "How far do you want to level? Type a skill or click a milestone. The route and the shopping list cover everything up to here.\n\nTip: go to the skill your trainer rank allows (75, 150, 225), then train and come back for the next part." },
+    { from = function() return frame.scanBtn end,
+      title = "Prices first",
+      body = hasA and "The route is worked out from auction house prices. Auctionator's are used when they're recent, but SCAN AH at an auction house gets fresh prices for exactly the materials this route needs (about a minute)."
+        or "The route is worked out from auction house prices. Go to an auction house and click SCAN AH: it looks up exactly the materials this route needs (about a minute). No other addon needed." },
+    { from = function() return frame.find end,
+      title = "Find the cheapest route",
+      body = "With prices in, click FIND CHEAPEST ROUTE. It lights up whenever the route is out of date (new prices, a new target, your skill moved past it)." },
+    { from = function() return frame.plans end, to = function() return frame.buffer end,
+      title = "What counts",
+      body = "BUY RECIPES lets the route use recipes from the auction house or a vendor. COUNT BANK, ALTS and MAIL count what you already own there. SPARE adds a few extra materials for crafts that don't give a point." },
+    { from = function() return frame.stepsHead end, area = true,
+      title = "Your route and shopping list",
+      body = "CRAFTS: which recipe to make for which skill range, with CRAFT to make the next one. MATERIALS: what you need, what you have (bags, bank, mail, alts) and what's still to buy. SEARCH MISSING looks the rest up at the auction house." },
+  }
+end
+
+function Tut.stop(done)
+  if tut then tut.box:Hide(); tut.hl:Hide() end
+  if done then CraftListDB.tutorialDone = true end
+  if tut then tut.step = nil end
+end
+
+function Tut.show()
+  local steps = Tut.steps()
+  local st = steps[tut.step]
+  if not st then Tut.stop(true); return end
+  local a, dx = st.from()
+  if not (a and a:IsShown()) then tut.step = tut.step + 1; return Tut.show() end
+  local b = st.to and st.to() or a
+  if not b:IsShown() then b = a end
+  local hl, box = tut.hl, tut.box
+  hl:ClearAllPoints()
+  hl:SetPoint("TOPLEFT", a, "TOPLEFT", (dx or 0) - 4, 4)
+  if st.area then hl:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD + 4, PAD - 4)
+  else hl:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 4, -4) end
+  hl:Show()
+  box.title:SetText(string.format("%d/%d  %s", tut.step, #steps, st.title:upper()))
+  box.body:SetText(st.body)
+  box.next.text:SetText(tut.step == #steps and "GOT IT" or "NEXT")
+  box:SetHeight(math.ceil(box.body:GetStringHeight()) + 70)
+  box:ClearAllPoints()
+  if st.area then box:SetPoint("TOP", hl, "TOP", 0, -24)
+  elseif (a:GetLeft() or 0) - (frame:GetLeft() or 0) > W / 2 then box:SetPoint("TOPRIGHT", b, "BOTTOMRIGHT", 0, -10)
+  else box:SetPoint("TOPLEFT", a, "BOTTOMLEFT", dx or 0, -10) end
+  box:Show()
+end
+
+function Tut.start()
+  if not frame then return end
+  if not tut then
+    local ar, ag, ab = accent()
+    local s = scheme()
+    local hl = CreateFrame("Frame", nil, frame)
+    hl:SetFrameLevel(frame:GetFrameLevel() + 25)
+    local e1 = edges(hl, ar, ag, ab, 1)
+    local glow = hl:CreateTexture(nil, "BACKGROUND"); glow:SetAllPoints(); glow:SetColorTexture(ar, ag, ab, 0.12)
+    local ag2 = hl:CreateAnimationGroup(); ag2:SetLooping("BOUNCE")
+    local fade = ag2:CreateAnimation("Alpha"); fade:SetFromAlpha(1); fade:SetToAlpha(0.35); fade:SetDuration(0.7)
+    hl:SetScript("OnShow", function() ag2:Play() end)
+    hl:SetScript("OnHide", function() ag2:Stop() end)
+    local box = CreateFrame("Frame", nil, frame)
+    box:SetSize(300, 120); box:SetFrameLevel(frame:GetFrameLevel() + 30); box:EnableMouse(true)
+    local bg = box:CreateTexture(nil, "BACKGROUND"); bg:SetAllPoints(); bg:SetColorTexture(s.bg[1], s.bg[2], s.bg[3], 1)
+    edges(box, ar, ag, ab, 0.9)
+    box.title = text(box, 11, ar, ag, ab, 1); box.title:SetPoint("TOPLEFT", 12, -10)
+    box.body = text(box, 12, 1, 1, 1, 0.9); box.body:SetPoint("TOPLEFT", 12, -28)
+    box.body:SetWidth(276); box.body:SetWordWrap(true)
+    box.next = chip(box, "NEXT", 80); box.next:SetPoint("BOTTOMRIGHT", -10, 10); box.next:SetActive(true)
+    box.next:SetScript("OnClick", function() tut.step = tut.step + 1; Tut.show() end)
+    box.skip = CreateFrame("Button", nil, box); box.skip:SetSize(110, 20); box.skip:SetPoint("BOTTOMLEFT", 8, 10)
+    box.skip.fs = text(box.skip, 11, 1, 1, 1, 0.45); box.skip.fs:SetPoint("LEFT", 4, 0); box.skip.fs:SetText("SKIP TUTORIAL")
+    box.skip:SetScript("OnEnter", function(self) self.fs:SetTextColor(1, 1, 1, 0.85) end)
+    box.skip:SetScript("OnLeave", function(self) self.fs:SetTextColor(1, 1, 1, 0.45) end)
+    box.skip:SetScript("OnClick", function() Tut.stop(true) end)
+    frame:HookScript("OnHide", function() if tut and tut.step then Tut.stop(false) end end)
+    tut = { hl = hl, box = box }
+  end
+  if frame.opts then frame.opts:Hide() end
+  tut.step = 1
+  Tut.show()
+end
+
 refresh = function()
   if not frame or not frame:IsShown() then return end
   local s = scheme()
@@ -2159,6 +2421,17 @@ refresh = function()
   else
     frame.cast:Hide()
     y = y + 4
+  end
+  local hintText = cur < 300 and priceHint(priceState(pid, cur, target)) or nil
+  if hintText then
+    frame.hint.fs:SetText(hintText)
+    local h = math.ceil(frame.hint.fs:GetStringHeight()) + 12
+    frame.hint:SetHeight(h)
+    frame.hint:ClearAllPoints(); frame.hint:SetPoint("TOPLEFT", PAD, -y); frame.hint:Show()
+    y = y + h + 8
+    if not scan then frame.scanBtn:SetActive(ahOpen) end
+  else
+    frame.hint:Hide()
   end
   frame.stepsHead:ClearAllPoints(); frame.stepsHead:SetPoint("TOPLEFT", PAD, -y)
   y = y + 16
@@ -2630,11 +2903,28 @@ local function onWindowOpen(mode)
       local rank = readSkill(tsProf)
       if rank and rank < 300 and frame then
         current = tsProf
-        if CraftListDB.auto ~= false and not frame:IsShown() then frame:Show() end
+        if CraftListDB.auto ~= false and not frame:IsShown() then frame:Show()
+        elseif frame:IsShown() then placeFrame() end
       end
     end
     soon()
   end)
+end
+
+-- the tutorial starts the first time the window shows a profession you can still level
+do
+  local inner = refresh
+  refresh = function(...)
+    inner(...)
+    if frame and frame:IsShown() and not CraftListDB.tutorialDone and not (tut and tut.step)
+      and frame.find and frame.find:IsShown() then
+      C_Timer.After(0.3, function()
+        if frame:IsShown() and not CraftListDB.tutorialDone and not (tut and tut.step) and frame.find:IsShown() then
+          Tut.start()
+        end
+      end)
+    end
+  end
 end
 
 local ev = CreateFrame("Frame")
@@ -2654,8 +2944,12 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     CraftListDB = CraftListDB or {}
     for k, v in pairs(DEFAULTS) do if CraftListDB[k] == nil then CraftListDB[k] = v end end
     CraftListDB.chars = CraftListDB.chars or {}
+    CraftListDB.minimap = CraftListDB.minimap or {}
+    CraftListDB.posChar = CraftListDB.posChar or {}
+    CraftListDB.pos = nil -- the old account-wide place: each character now keeps its own
     pcall(importOthers)
     build()
+    pcall(setupMinimap)
     for _, e in ipairs({ "BAG_UPDATE_DELAYED", "SKILL_LINES_CHANGED", "CHAT_MSG_SKILL", "GET_ITEM_INFO_RECEIVED",
       "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYERBANKSLOTS_CHANGED", "PLAYER_LOGIN", "PLAYER_LOGOUT",
       "MAIL_SHOW", "MAIL_CLOSED", "MAIL_INBOX_UPDATE", "MAIL_SEND_SUCCESS", "MAIL_FAILED", "MERCHANT_SHOW",
@@ -2740,9 +3034,16 @@ SlashCmdList.CRAFTLIST = function(msg)
   local n = tonumber(msg)
   if n then frame:Show(); setTarget(n); return end
   if msg == "reset" then
-    CraftListDB.pos = nil
-    frame:ClearAllPoints(); frame:SetPoint("CENTER", -200, 40)
-    frame:Show(); return
+    CraftListDB.posChar[myKey()] = nil
+    placeFrame(); frame:Show(); return
+  end
+  if msg == "tutorial" then
+    frame:Show(); refresh(); Tut.start(); return
+  end
+  if msg == "minimap" then
+    setMinimap(CraftListDB.minimap.hide and true or false)
+    Print("minimap button: " .. (CraftListDB.minimap.hide and "hidden" or "shown"))
+    return
   end
   if msg == "auto" then
     CraftListDB.auto = (CraftListDB.auto == false)
@@ -2804,7 +3105,9 @@ SlashCmdList.CRAFTLIST = function(msg)
     Print("/cl alts  list the alts it's counting")
     Print("/cl auto  open (or not) with your profession windows")
     Print("/cl forget Name  stop counting a character")
-    Print("/cl reset  move the window back to the middle")
+    Print("/cl minimap  show or hide the minimap button")
+    Print("/cl tutorial  the first-time walkthrough again")
+    Print("/cl reset  forget where you dragged the window: it opens next to the profession window again")
     return
   end
   local pid = profFromArg(msg)

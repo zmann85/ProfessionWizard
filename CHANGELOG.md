@@ -17,6 +17,13 @@ First release on CurseForge (beta).
 - Lists: each crafter's missing materials, so an alt can see what to send it, and a mailbox panel that sends
   them in one click.
 - CRAFT, MAKE and SMELT buttons, and SMELT ALL for every smelt the route needs.
+- A first-time walkthrough the first time the list opens: your target skill, prices (SCAN AH), FIND CHEAPEST
+  ROUTE, the switches, and how to read the route. SETTINGS > SHOW TUTORIAL or `/cl tutorial` plays it again.
+- A hint above the route while its materials have no auction house prices yet, or only ones older than a day:
+  where to go and what to click (it knows whether you have Auctionator and whether you're at the auction house).
+- The list opens with your profession window (SETTINGS > OPEN WITH PROFESSIONS) and, until you drag it
+  somewhere, right next to it. Each character keeps its own place; `/cl reset` forgets it.
+- A minimap button (SETTINGS > MINIMAP BUTTON or `/cl minimap` to hide it).
 - CraftList learns as you play: the recipes you know, a recipe's colours when the profession window shows
   them differently, and vendor prices when you open a vendor.
 

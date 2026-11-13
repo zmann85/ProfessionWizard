@@ -25,7 +25,9 @@ send it with one click at the mailbox.
 1. Open each profession window once, so CraftList knows which recipes you have.
 2. Log in on your alts once and open their bank and mailbox, so their items are counted.
 3. At the auction house, click **SCAN AH** in the CraftList window (or scan with Auctionator).
-4. `/cl` opens the list for your profession. Craft down the route.
+4. The list opens with your profession window (or click the minimap button, or `/cl`). Click **FIND CHEAPEST ROUTE** and craft down the route.
+
+The first time the list opens, a short walkthrough shows where everything is.
 
 ## Commands
 | Command | |
@@ -35,7 +37,9 @@ send it with one click at the mailbox.
 | `/cl 225` | check materials up to skill 225 |
 | `/cl alts` / `forget Name` | the alts it's counting / stop counting one |
 | `/cl auto` | open (or not) with your profession windows |
-| `/cl reset` | move the window back to the middle |
+| `/cl tutorial` | the first-time walkthrough again |
+| `/cl minimap` | show or hide the minimap button |
+| `/cl reset` | forget where you dragged the window, so it opens next to the profession window again |
 | `/cl debug` | what CraftList sees in the open profession window (paste this in a bug report) |
 | `/cl help` | all commands |
 

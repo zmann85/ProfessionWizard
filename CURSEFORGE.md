@@ -11,6 +11,7 @@ CraftList works out which recipe to craft at each skill point so that levelling 
 - **Your own prices**: click **SCAN AH** at the auction house, or let CraftList use Auctionator's.
 - **Alts help out**: an alt sees what a crafter is missing and sends it with one click at the mailbox.
 - **Craft from the list**: CRAFT, MAKE, SMELT and SMELT ALL buttons.
+- **Opens with your profession window**, right next to it, with a **minimap button** and a short **first-time walkthrough**. If your prices are missing or old it tells you to scan first.
 - **Learns as you play**: the recipes you know, recipe colours from the profession window, and vendor prices.
 
 ---
@@ -34,7 +35,9 @@ CraftList works out which recipe to craft at each skill point so that levelling 
 | `/cl 225` | check materials up to skill 225 |
 | `/cl alts` / `forget Name` | the alts it's counting / stop counting one |
 | `/cl auto` | open (or not) with your profession windows |
-| `/cl reset` | move the window back to the middle |
+| `/cl tutorial` | the first-time walkthrough again |
+| `/cl minimap` | show or hide the minimap button |
+| `/cl reset` | forget where you dragged the window, so it opens next to the profession window again |
 | `/cl debug` | what CraftList sees in the open profession window |
 
 ---
