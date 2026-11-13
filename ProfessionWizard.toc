@@ -5,6 +5,7 @@
 ## Version: @project-version@
 ## IconTexture: Interface\Icons\Trade_BlackSmithing
 ## X-License: All Rights Reserved
+## X-Curse-Project-ID: 1803714
 ## OptionalDeps: Auctionator, GoldSense, Itinerary, EllesmereUI
 ## SavedVariables: ProfessionWizardDB
 
