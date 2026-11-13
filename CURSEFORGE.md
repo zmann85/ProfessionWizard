@@ -4,6 +4,8 @@ Profession Wizard works out which recipe to craft at each skill point so that le
 
 ---
 
+![](https://media.forgecdn.net/attachments/2200/865/wow_m1zofv5vbo-png.png)
+
 ## What it does
 
 - **The cheapest route** for Alchemy, Blacksmithing, Leatherworking, Tailoring, Engineering, Enchanting, Cooking, First Aid, Poisons and Mining's smelts. Each step weighs what the materials cost, how likely a skill-up is at that colour, what the result sells to a vendor for, and whether making a reagent yourself is cheaper than buying it.
