@@ -1,0 +1,2816 @@
+local ADDON, ns = ...
+
+-- The recipe data is a separate add-on (CraftList_Data, GPL v2) that loads after CraftList and fills
+-- ns.RECIPES through this global.
+CraftListAPI = ns
+ns.RECIPES = ns.RECIPES or {}
+local DATA_ADDON = "CraftList_Data"
+
+local CALLER = "CraftList"
+local W, PAD, ROW_H, MAX_ROWS, STEP_H, MAX_STEPS = 620, 14, 20, 18, 16, 12
+local X_NEED, X_HAVE, W_HAVE, X_STAT = 250, 318, 160, 490
+
+local GetItemInfo = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
+local GetItemCountRaw = (C_Item and C_Item.GetItemCount) or _G.GetItemCount
+local GetIcon = (C_Item and C_Item.GetItemIconByID) or _G.GetItemIcon
+
+local DEFAULTS = { plans = true, bank = true, buffer = 10, alts = true, mail = true, auto = true }
+
+-- a craft that only just pays for itself isn't worth the time: every craft counts as costing this much more
+local PER_CRAFT = 50
+-- recipes this close to grey are skipped: too many crafts per point
+local MIN_CHANCE = 0.25
+
+local function Print(msg) DEFAULT_CHAT_FRAME:AddMessage("|cffdca77fCraftList|r: " .. msg) end
+
+---------------------------------------------------------------------------
+-- Look: same flat style as GoldSense / SmithList / Itinerary
+---------------------------------------------------------------------------
+local SCHEMES = {
+  copper    = { accent = { 220 / 255, 167 / 255, 127 / 255 }, warm = { 1, 0.82, 0.45 }, bg = { 0.077, 0.068, 0.058 }, btn = { 0.075, 0.113, 0.141 }, onAccent = { 0.05, 0.05, 0.05 } },
+  itinerary = { accent = { 0.05, 0.82, 0.62 }, warm = { 1, 0.82, 0.45 }, bg = { 0.077, 0.068, 0.058 }, btn = { 0.075, 0.113, 0.141 }, onAccent = { 0.05, 0.05, 0.05 }, ellesmere = true },
+  amethyst  = { accent = { 0.47, 0.27, 0.76 }, warm = { 0.80, 0.72, 1 }, bg = { 0.075, 0.07, 0.085 }, btn = { 0.15, 0.145, 0.16 }, onAccent = { 1, 1, 1 } },
+  frost     = { accent = { 0.30, 0.65, 1 }, warm = { 0.72, 0.87, 1 }, bg = { 0.05, 0.065, 0.085 }, btn = { 0.075, 0.113, 0.141 }, onAccent = { 0.03, 0.05, 0.08 } },
+  ember     = { accent = { 1, 0.45, 0.15 }, warm = { 1, 0.78, 0.48 }, bg = { 0.08, 0.06, 0.05 }, btn = { 0.15, 0.10, 0.08 }, onAccent = { 0.06, 0.03, 0.02 } },
+  slate     = { accent = { 0.86, 0.86, 0.86 }, warm = { 1, 1, 1 }, bg = { 0.06, 0.06, 0.065 }, btn = { 0.14, 0.14, 0.15 }, onAccent = { 0.05, 0.05, 0.05 } },
+}
+
+local function scheme()
+  local key = ItineraryDB and ItineraryDB.panel and ItineraryDB.panel.scheme or "copper"
+  return SCHEMES[key] or SCHEMES.copper
+end
+
+local function accent()
+  local s = scheme()
+  if s.ellesmere then
+    local g = EllesmereUI and EllesmereUI.ELLESMERE_GREEN
+    if g and g.r then return g.r, g.g, g.b end
+  end
+  return s.accent[1], s.accent[2], s.accent[3]
+end
+
+local function fontPath()
+  if EllesmereUI and EllesmereUI.GetFontPath then
+    local ok, path = pcall(EllesmereUI.GetFontPath)
+    if ok and path then return path end
+  end
+  return STANDARD_TEXT_FONT
+end
+
+local function hex(r, g, b) return string.format("|cff%02x%02x%02x", r * 255, g * 255, b * 255) end
+
+local function text(parent, size, r, g, b, a)
+  local fs = parent:CreateFontString(nil, "OVERLAY")
+  fs:SetFont(fontPath(), size, "")
+  fs:SetTextColor(r, g, b, a or 1)
+  fs:SetJustifyH("LEFT")
+  fs:SetWordWrap(false)
+  return fs
+end
+
+local function edges(frame, r, g, b, a)
+  local px = 1 / (frame:GetEffectiveScale() or 1)
+  local set = {}
+  local function edge() local t = frame:CreateTexture(nil, "BORDER"); t:SetColorTexture(r, g, b, a); set[#set + 1] = t; return t end
+  local t = edge(); t:SetPoint("TOPLEFT"); t:SetPoint("TOPRIGHT"); t:SetHeight(px)
+  local bo = edge(); bo:SetPoint("BOTTOMLEFT"); bo:SetPoint("BOTTOMRIGHT"); bo:SetHeight(px)
+  local l = edge(); l:SetPoint("TOPLEFT"); l:SetPoint("BOTTOMLEFT"); l:SetWidth(px)
+  local ri = edge(); ri:SetPoint("TOPRIGHT"); ri:SetPoint("BOTTOMRIGHT"); ri:SetWidth(px)
+  function set:SetColor(...) for _, e in ipairs(self) do e:SetColorTexture(...) end end
+  return set
+end
+
+local function chip(parent, label, w, template, name)
+  local b = CreateFrame("Button", name, parent, template)
+  b:SetSize(w, 20)
+  b.bg = b:CreateTexture(nil, "BACKGROUND"); b.bg:SetAllPoints()
+  b.edges = edges(b, 1, 1, 1, 0.18)
+  b.text = text(b, 11, 1, 1, 1, 0.5)
+  b.text:SetPoint("CENTER"); b.text:SetText(label)
+  function b:SetActive(on)
+    local s = scheme()
+    if on then
+      local ar, ag, ab = accent()
+      self.bg:SetColorTexture(ar, ag, ab, 0.9); self.edges:SetColor(ar, ag, ab, 1)
+      self.text:SetTextColor(s.onAccent[1], s.onAccent[2], s.onAccent[3], 1)
+    else
+      self.bg:SetColorTexture(s.btn[1], s.btn[2], s.btn[3], 1); self.edges:SetColor(1, 1, 1, 0.18)
+      self.text:SetTextColor(1, 1, 1, 0.5)
+    end
+    self.active = on
+  end
+  b:SetScript("OnEnter", function(self) if not self.active then self.text:SetTextColor(1, 1, 1, 0.85) end end)
+  b:SetScript("OnLeave", function(self) if not self.active then self.text:SetTextColor(1, 1, 1, 0.5) end end)
+  b:SetActive(false)
+  return b
+end
+
+local function tip(widget, title, ...)
+  local lines = { ... }
+  widget:HookScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+    GameTooltip:AddLine(title, 1, 1, 1)
+    for _, l in ipairs(lines) do
+      if type(l) == "function" then l() else GameTooltip:AddLine(l, 0.8, 0.8, 0.8, true) end
+    end
+    GameTooltip:Show()
+  end)
+  widget:HookScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
+local function insertLink(link)
+  if ChatFrameUtil and ChatFrameUtil.InsertLink then return ChatFrameUtil.InsertLink(link) end
+  if ChatEdit_InsertLink then return ChatEdit_InsertLink(link) end
+end
+
+local function money(c)
+  c = math.floor((c or 0) + 0.5)
+  local sign = c < 0 and "-" or ""
+  c = math.abs(c)
+  local g, s, cu = math.floor(c / 10000), math.floor((c % 10000) / 100), c % 100
+  if g > 0 then return string.format("%s%dg %02ds", sign, g, s) end
+  if s > 0 then return string.format("%s%ds", sign, s) end
+  return string.format("%s%dc", sign, cu)
+end
+
+local function ago(t)
+  if not t then return "" end
+  local d = time() - t
+  if d < 3600 then return math.max(1, math.floor(d / 60)) .. "m ago" end
+  if d < 86400 then return math.floor(d / 3600) .. "h ago" end
+  return math.floor(d / 86400) .. "d ago"
+end
+
+---------------------------------------------------------------------------
+-- Professions
+---------------------------------------------------------------------------
+local MINING = 186
+local PROFS = {
+  { id = 171, spell = 2259, short = "ALCHEMY",  names = { "Alchemy", "Alchimie", "Alquimia" } },
+  { id = 164, spell = 2018, short = "SMITHING", names = { "Blacksmithing", "Schmiedekunst", "Forge", "Herrería" } },
+  { id = 165, spell = 2108, short = "LEATHER",  names = { "Leatherworking", "Lederverarbeitung", "Travail du cuir", "Peletería" } },
+  { id = 197, spell = 3908, short = "TAILORING", names = { "Tailoring", "Schneiderei", "Couture", "Sastrería" } },
+  { id = 202, spell = 4036, short = "ENGINEER", names = { "Engineering", "Ingenieurskunst", "Ingénierie", "Ingeniería" } },
+  { id = 333, spell = 7411, short = "ENCHANT",  names = { "Enchanting", "Verzauberkunst", "Enchantement", "Encantamiento" } },
+  { id = 185, spell = 2550, short = "COOKING",  names = { "Cooking", "Kochkunst", "Cuisine", "Cocina" } },
+  { id = 129, spell = 3273, short = "FIRST AID", names = { "First Aid", "Erste Hilfe", "Secourisme", "Primeros auxilios" } },
+  { id = 40,  spell = 2842, short = "POISONS",  names = { "Poisons", "Gifte", "Poisons", "Venenos" } },
+  { id = 186, spell = 2575, short = "MINING",   names = { "Mining", "Bergbau", "Minage", "Minería" }, gather = true },
+}
+local PROF = {}
+for _, p in ipairs(PROFS) do
+  PROF[p.id] = p
+  p.nameSet = {}
+  for _, n in ipairs(p.names) do p.nameSet[n] = true end
+end
+
+local function spellName(id)
+  if C_Spell and C_Spell.GetSpellName then
+    local ok, n = pcall(C_Spell.GetSpellName, id)
+    if ok and n then return n end
+  end
+  if GetSpellInfo then
+    local ok, n = pcall(GetSpellInfo, id)
+    if ok and n then return n end
+  end
+end
+
+local function profName(pid)
+  local p = PROF[pid]
+  if not p then return "?" end
+  p.local_ = p.local_ or spellName(p.spell) or p.names[1]
+  return p.local_
+end
+
+-- profession id from a skill line or window name
+local function profFromName(n)
+  if not n then return nil end
+  for _, p in ipairs(PROFS) do
+    if p.nameSet[n] or n == profName(p.id) then return p.id end
+  end
+end
+
+-- every profession this character has: { [id] = { rank, max } }
+local function readSkills()
+  local out = {}
+  if GetNumSkillLines and GetSkillLineInfo then
+    for i = 1, GetNumSkillLines() do
+      local n, header, _, rank, _, _, maxRank = GetSkillLineInfo(i)
+      local pid = (not header) and profFromName(n)
+      if pid then out[pid] = { rank = rank, max = maxRank } end
+    end
+  end
+  if next(out) == nil and GetProfessions and GetProfessionInfo then
+    local list = { GetProfessions() }
+    for i = 1, 6 do
+      local idx = list[i]
+      if idx then
+        local n, _, rank, maxRank = GetProfessionInfo(idx)
+        local pid = profFromName(n)
+        if pid then out[pid] = { rank = rank, max = maxRank } end
+      end
+    end
+  end
+  return out
+end
+
+local function readSkill(pid)
+  local s = readSkills()[pid]
+  if s then return s.rank, s.max end
+end
+
+local function myKey() return (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?") end
+
+---------------------------------------------------------------------------
+-- Recipe data (Recipes.lua), turned into tables the first time a profession is used.
+-- Colors you've seen in the profession window replace the shipped ones.
+---------------------------------------------------------------------------
+local cache = {}
+
+local function applyFix(r)
+  local f = CraftListDB and CraftListDB.fix and CraftListDB.fix[r.spell]
+  if f then r.y, r.g = f.y or r.y, f.g or r.g end
+end
+
+local function recipes(pid)
+  local c = cache[pid]
+  if c then return c end
+  c = { list = {}, bySpell = {}, byCreates = {}, byName = {} }
+  for _, t in ipairs(ns.RECIPES[pid] or {}) do
+    local r = { spell = t[1], learn = t[2], y = t[3], g = t[4], creates = t[5], made = math.max(1, t[6] or 1),
+      plans = t[7], trainer = (t[8] == 1), name = t[9], mats = {}, prof = pid }
+    local m = t[10] or {}
+    for i = 1, #m, 2 do r.mats[#r.mats + 1] = { m[i], m[i + 1] } end
+    applyFix(r)
+    c.list[#c.list + 1] = r
+    c.bySpell[r.spell] = r
+    c.byName[r.name] = r
+    if r.creates > 0 then
+      c.byCreates[r.creates] = c.byCreates[r.creates] or {}
+      table.insert(c.byCreates[r.creates], r)
+    end
+  end
+  cache[pid] = c
+  return c
+end
+
+-- chance of a skill point at skill s: orange 1, yellow 1, then falling to 0 at grey
+local function chance(r, s)
+  if s < r.learn or s >= r.g then return 0 end
+  if s < r.y then return 1 end
+  return (r.g - s) / (r.g - r.y)
+end
+
+local function colorAt(r, s)
+  if s < r.learn then return "|cff808080" end
+  if s < r.y then return "|cffff8040" end
+  if s < (r.y + r.g) / 2 then return "|cffffff00" end
+  if s < r.g then return "|cff40c040" end
+  return "|cff808080"
+end
+
+-- recipes this character knows, read from its profession windows
+local function knownSet()
+  CraftListDB.known = CraftListDB.known or {}
+  local k = myKey()
+  CraftListDB.known[k] = CraftListDB.known[k] or {}
+  return CraftListDB.known[k]
+end
+
+local function isKnown(r) return knownSet()[r.spell] and true or false end
+
+local function seenProf(pid)
+  CraftListDB.seen = CraftListDB.seen or {}
+  local s = CraftListDB.seen[myKey()]
+  return s and s[pid]
+end
+
+---------------------------------------------------------------------------
+-- Prices
+---------------------------------------------------------------------------
+local function auctionatorPrice(id)
+  local a = Auctionator and Auctionator.API and Auctionator.API.v1
+  if not (a and a.GetAuctionPriceByItemID) then return nil end
+  local ok, p = pcall(a.GetAuctionPriceByItemID, CALLER, id)
+  if ok and type(p) == "number" and p > 0 then return p end
+end
+
+-- prices from CraftList's own scan (SCAN AH), per realm
+local function scanStore()
+  CraftListDB.scan = CraftListDB.scan or {}
+  local r = GetRealmName() or "?"
+  CraftListDB.scan[r] = CraftListDB.scan[r] or {}
+  return CraftListDB.scan[r]
+end
+
+-- your own scan wins while it's less than a day old; otherwise Auctionator's price
+local function ahPrice(id)
+  local own = CraftListDB.scan and CraftListDB.scan[GetRealmName() or "?"]
+  own = own and own[id]
+  local a = auctionatorPrice(id)
+  if own and own.p and (not a or time() - own.t < 86400) then return own.p end
+  return a or (own and own.p)
+end
+
+local function sellPrice(id)
+  local info = { GetItemInfo(id) }
+  if info[1] == nil then
+    if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
+    return nil
+  end
+  return info[11] or 0
+end
+
+local function vendorBuy(id)
+  local seen = CraftListDB.vendor and CraftListDB.vendor[id]
+  if seen then return seen end
+  if ns.VENDOR_ITEMS[id] then
+    local s = sellPrice(id)
+    if s and s > 0 then return s * 4 end
+  end
+end
+
+-- cheapest place to buy one, and where
+local function buyPrice(id)
+  local a, v = ahPrice(id), vendorBuy(id)
+  if a and v then
+    if v <= a then return v, "vendor" end
+    return a, "ah"
+  end
+  if v then return v, "vendor" end
+  if a then return a, "ah" end
+end
+
+-- read every vendor you open, so its prices are known from then on
+local function readMerchant()
+  if not (GetMerchantNumItems and GetMerchantItemInfo and GetMerchantItemLink) then return end
+  CraftListDB.vendor = CraftListDB.vendor or {}
+  local n = GetMerchantNumItems() or 0
+  for i = 1, n do
+    local _, _, cost, qty, _, _, _, extended = GetMerchantItemInfo(i)
+    local link = GetMerchantItemLink(i)
+    local id = link and tonumber(link:match("item:(%d+)"))
+    if id and cost and cost > 0 and not extended then
+      local each = cost / math.max(1, qty or 1)
+      local old = CraftListDB.vendor[id]
+      if not old or each < old then CraftListDB.vendor[id] = each end
+    end
+  end
+end
+
+---------------------------------------------------------------------------
+-- Bags, bank, mail, alts
+---------------------------------------------------------------------------
+local WANT = {}
+local function want(id) if id and id > 0 then WANT[id] = true end end
+local function buildWant()
+  for k in pairs(WANT) do WANT[k] = nil end
+  for pid, list in pairs(ns.RECIPES) do
+    for _, t in ipairs(list) do
+      want(t[5])
+      local m = t[10] or {}
+      for i = 1, #m, 2 do want(m[i]) end
+    end
+  end
+end
+
+local function rawCount(id, withBank)
+  if not GetItemCountRaw then return 0 end
+  local ok, n = pcall(GetItemCountRaw, id, withBank and true or false)
+  return (ok and n) or 0
+end
+
+local function count(id) return rawCount(id, CraftListDB.bank) end
+
+local function numSlots(bag)
+  if C_Container and C_Container.GetContainerNumSlots then return C_Container.GetContainerNumSlots(bag) or 0 end
+  return GetContainerNumSlots and GetContainerNumSlots(bag) or 0
+end
+
+local function slotInfo(bag, slot)
+  if C_Container and C_Container.GetContainerItemInfo then
+    local info = C_Container.GetContainerItemInfo(bag, slot)
+    if info then return info.itemID, info.stackCount, info.isLocked end
+    return nil
+  end
+  if GetContainerItemInfo then
+    local _, cnt, locked, _, _, _, _, _, _, id = GetContainerItemInfo(bag, slot)
+    return id, cnt, locked
+  end
+end
+
+local function scanBags(list)
+  local out = {}
+  for _, bag in ipairs(list) do
+    for slot = 1, numSlots(bag) do
+      local id, cnt = slotInfo(bag, slot)
+      if id and WANT[id] then out[id] = (out[id] or 0) + (cnt or 1) end
+    end
+  end
+  return out
+end
+
+local function bagList()
+  local l = {}
+  for b = 0, (NUM_BAG_SLOTS or 4) do l[#l + 1] = b end
+  return l
+end
+
+local function bankList()
+  local l = { BANK_CONTAINER or -1 }
+  local first = (NUM_BAG_SLOTS or 4) + 1
+  for b = first, first + (NUM_BANKBAGSLOTS or 6) - 1 do l[#l + 1] = b end
+  return l
+end
+
+-- the inbox is only read once the game has loaded it (MAIL_INBOX_UPDATE), and never while the
+-- mailbox or bank is closing: by then they read as empty and would wipe what's saved
+local bankOpen, mailOpen, mailShown = false, false, false
+
+local function readInbox()
+  local out = {}
+  if not (GetInboxNumItems and GetInboxItem) then return out end
+  local ok, n = pcall(GetInboxNumItems)
+  if not ok or not n then return out end
+  for i = 1, n do
+    for a = 1, (ATTACHMENTS_MAX_RECEIVE or 16) do
+      local ok2, _, itemID, _, cnt = pcall(GetInboxItem, i, a)
+      if ok2 and type(itemID) == "number" and WANT[itemID] then out[itemID] = (out[itemID] or 0) + (cnt or 1) end
+    end
+  end
+  return out
+end
+
+local saveGoals -- set further down
+
+local function snapshot()
+  if not CraftListDB then return end
+  CraftListDB.chars = CraftListDB.chars or {}
+  local key = myKey()
+  local old = CraftListDB.chars[key] or {}
+  local skills = {}
+  for pid, s in pairs(readSkills()) do skills[pid] = s.rank end
+  local me = {
+    name = UnitName("player"), realm = GetRealmName(), faction = UnitFactionGroup("player"),
+    skills = skills, time = time(), bags = scanBags(bagList()), bank = old.bank or {}, bankTime = old.bankTime,
+    mail = old.mail or {}, incoming = old.incoming or {}, mailTime = old.mailTime,
+  }
+  if bankOpen then me.bank = scanBags(bankList()); me.bankTime = time() end
+  if mailOpen then me.mail = readInbox(); me.incoming = {}; me.mailTime = time() end
+  CraftListDB.chars[key] = me
+  if saveGoals then pcall(saveGoals) end
+end
+
+-- Alts saved by GoldSense (and skills saved by SmithList) count too, so nothing has to be
+-- re-learned: whatever they saw more recently than CraftList is taken over.
+local function filtered(t)
+  local out = {}
+  for id, n in pairs(t or {}) do if WANT[id] then out[id] = n end end
+  return out
+end
+
+local function importOthers()
+  local me = myKey()
+  local inv = GoldSenseDB and GoldSenseDB.inv
+  if type(inv) == "table" then
+    for realm, chars in pairs(inv) do
+      for name, c in pairs(chars) do
+        local key = name .. "-" .. realm
+        local mine = CraftListDB.chars[key]
+        if key == me and mine and type(c) == "table" and not mine.mailTime and c.mailAt then
+          mine.mail = filtered(c.mail); mine.mailTime = c.mailAt
+        end
+        if key ~= me and type(c) == "table" and (c.at or 0) > ((mine and mine.time) or 0) then
+          mine = mine or { name = name, realm = realm, skills = {}, incoming = {} }
+          mine.faction = c.faction or mine.faction
+          mine.bags = filtered(c.bags)
+          if c.bankAt or not mine.bank then mine.bank = filtered(c.bank); mine.bankTime = c.bankAt end
+          if c.mailAt or not mine.mail then mine.mail = filtered(c.mail); mine.mailTime = c.mailAt; mine.incoming = {} end
+          mine.time = c.at
+          CraftListDB.chars[key] = mine
+        end
+      end
+    end
+  end
+  local sl = SmithListDB and SmithListDB.chars
+  if type(sl) == "table" then
+    for key, c in pairs(sl) do
+      local mine = CraftListDB.chars[key]
+      if key ~= me and type(c) == "table" then
+        if not mine and c.realm then
+          mine = { name = c.name, realm = c.realm, faction = c.faction, time = c.time, skills = {},
+            bags = c.bags or {}, bank = c.bank or {}, mail = c.mail or {}, incoming = c.incoming or {} }
+          CraftListDB.chars[key] = mine
+        end
+        if mine and c.mining then
+          mine.skills = mine.skills or {}
+          mine.skills[MINING] = math.max(mine.skills[MINING] or 0, c.mining)
+        end
+      end
+    end
+  end
+end
+
+local function alts()
+  local list, key = {}, myKey()
+  local realm, faction = GetRealmName(), UnitFactionGroup("player")
+  for k, c in pairs(CraftListDB.chars or {}) do
+    if k ~= key and c.realm == realm and c.faction == faction then list[#list + 1] = c end
+  end
+  table.sort(list, function(a, b) return (a.name or "") < (b.name or "") end)
+  return list
+end
+
+local function mailOf(c, id)
+  if not (CraftListDB.mail and c) then return 0 end
+  return ((c.mail and c.mail[id]) or 0) + ((c.incoming and c.incoming[id]) or 0)
+end
+
+local function ownMail(id) return mailOf(CraftListDB.chars and CraftListDB.chars[myKey()], id) end
+
+local noAlts = false -- set while working out what this character alone still needs
+local function altCount(id)
+  if noAlts or not CraftListDB.alts then return 0, {} end
+  local total, parts = 0, {}
+  for _, c in ipairs(alts()) do
+    local m = mailOf(c, id)
+    local n = ((c.bags and c.bags[id]) or 0) + (CraftListDB.bank and ((c.bank and c.bank[id]) or 0) or 0) + m
+    if n > 0 then total = total + n; parts[#parts + 1] = { name = c.name, n = n, mail = m, time = c.time } end
+  end
+  return total, parts
+end
+
+local function haveOf(id)
+  local a = altCount(id)
+  return count(id) + ownMail(id) + a
+end
+
+-- best skill among you and (if counted) your alts, e.g. Mining for smelting
+local function bestSkill(pid)
+  local best = readSkill(pid) or 0
+  if CraftListDB.alts and not noAlts then
+    for _, c in ipairs(alts()) do
+      local v = c.skills and c.skills[pid]
+      if v and v > best then best = v end
+    end
+  end
+  return best
+end
+
+-- mail you send to your own characters counts on them straight away
+local function shortName(s)
+  s = (s or ""):gsub("%-.*$", "")
+  local sep = Constants and Constants.CharacterNameSeparatorConsts and Constants.CharacterNameSeparatorConsts.CHARACTERNAME_SURNAME_SEPARATOR
+  if sep and sep ~= "" then
+    local i = s:find(sep, 1, true)
+    if i then s = s:sub(1, i - 1) end
+  end
+  return (s:match("^(%S+)") or s):lower()
+end
+
+local outgoing
+local function noteOutgoing(recipient)
+  local items, any = {}, false
+  if not GetSendMailItem then return end
+  for i = 1, (ATTACHMENTS_MAX_SEND or 12) do
+    local ok, _, itemID, _, cnt = pcall(GetSendMailItem, i)
+    if ok and type(itemID) == "number" and WANT[itemID] then items[itemID] = (items[itemID] or 0) + (cnt or 1); any = true end
+  end
+  outgoing = any and { to = recipient, items = items } or nil
+end
+
+local function deliverOutgoing()
+  if not outgoing then return end
+  local who = shortName(outgoing.to)
+  local realm, faction = GetRealmName(), UnitFactionGroup("player")
+  local target, targetKey
+  for k, c in pairs(CraftListDB.chars) do
+    if c.realm == realm and c.faction == faction and shortName(c.name) == who then target, targetKey = c, k end
+  end
+  if target and targetKey ~= myKey() then
+    target.incoming = target.incoming or {}
+    for id, n in pairs(outgoing.items) do target.incoming[id] = (target.incoming[id] or 0) + n end
+    for _, g in pairs(CraftListDB.goals or {}) do
+      if g.owner == targetKey then
+        g.sent = g.sent or {}
+        for id, n in pairs(outgoing.items) do g.sent[id] = (g.sent[id] or 0) + n end
+      end
+    end
+  end
+  outgoing = nil
+end
+
+---------------------------------------------------------------------------
+-- Cheapest route: for every skill point, the recipe with the lowest
+-- (materials - what the vendor pays for the result) / chance of a point.
+-- Materials are bought or made, whichever is cheaper (bars you can smelt, bolts you can weave...).
+---------------------------------------------------------------------------
+local function producers(id, pid)
+  local out = {}
+  for _, r in ipairs(recipes(pid).byCreates[id] or {}) do out[#out + 1] = r end
+  if pid ~= MINING then
+    for _, r in ipairs(recipes(MINING).byCreates[id] or {}) do out[#out + 1] = r end
+  end
+  return out
+end
+
+-- can this be made on the way, as a material for something else?
+local function canMake(r, ctx)
+  if r.prof == MINING then return ctx.mining >= r.learn end
+  if r.prof ~= ctx.pid then return false end
+  if isKnown(r) then return true end
+  return r.trainer and r.learn <= ctx.skill
+end
+
+local function unitCost(id, ctx, depth)
+  local m = ctx.memo[id]
+  if m ~= nil then return m or nil end
+  ctx.memo[id] = false -- stops loops
+  local best = buyPrice(id)
+  local via
+  if depth < 3 then
+    for _, r in ipairs(producers(id, ctx.pid)) do
+      if canMake(r, ctx) then
+        local c = 0
+        for _, mt in ipairs(r.mats) do
+          local u = unitCost(mt[1], ctx, depth + 1)
+          if not u then c = nil; break end
+          c = c + u * mt[2]
+        end
+        if c then
+          c = c / r.made
+          if not best or c < best then best, via = c, r end
+        end
+      end
+    end
+  end
+  ctx.memo[id] = best or false
+  ctx.via[id] = via
+  return best
+end
+
+local function newCtx(pid, skill)
+  return { pid = pid, skill = skill, mining = bestSkill(MINING), memo = {}, via = {} }
+end
+
+-- may this recipe be used for skill-ups, and what do its plans cost?
+local function usable(r, from)
+  if r.creates == 0 and r.prof ~= 333 then return false end
+  if isKnown(r) then return true, 0 end
+  if r.trainer then return true, 0 end
+  if r.plans > 0 and CraftListDB.plans then
+    local p, where = buyPrice(r.plans)
+    if p then return true, p, where end
+  end
+  return false
+end
+
+local function findRoute(pid, from, to)
+  local ctx = newCtx(pid, from)
+  local cands, waiting, unpriced = {}, 0, {}
+  for _, r in ipairs(recipes(pid).list) do
+    if r.g > from and r.learn < to then
+      local ok, plansCost, where = usable(r, from)
+      if ok then
+        local c = 0
+        for _, mt in ipairs(r.mats) do
+          local u = unitCost(mt[1], ctx, 0)
+          if not u then c = nil; unpriced[mt[1]] = (unpriced[mt[1]] or 0) + 1; break end
+          c = c + u * mt[2]
+        end
+        if c then
+          local back = 0
+          if r.creates > 0 then
+            local sp = sellPrice(r.creates)
+            if sp then back = sp * r.made else waiting = waiting + 1 end
+          end
+          cands[#cands + 1] = { r = r, mats = c, back = back, net = c - back, plans = plansCost or 0, where = where }
+        end
+      end
+    end
+  end
+
+  local segs, bought = {}, {}
+  local cur
+  for s = from, to - 1 do
+    local best, bestScore
+    for _, cd in ipairs(cands) do
+      local p = chance(cd.r, s)
+      if p >= MIN_CHANCE then
+        local score = (cd.net + PER_CRAFT) / p
+        if cd.plans > 0 and not bought[cd.r.spell] then
+          local span = 0
+          for t = s, to - 1 do
+            if chance(cd.r, t) >= MIN_CHANCE then span = span + 1 else break end
+          end
+          score = score + cd.plans / math.max(1, span)
+        end
+        if not bestScore or score < bestScore then best, bestScore = cd, score end
+      end
+    end
+    local spell = best and best.r.spell or 0
+    if best then bought[spell] = true end
+    if cur and cur.spell == spell then
+      cur.to = s + 1
+    else
+      cur = { spell = spell, from = s, to = s + 1 }
+      if best then cur.plans, cur.where = best.plans, best.where end
+      segs[#segs + 1] = cur
+    end
+  end
+  local nUnpriced = 0
+  for _ in pairs(unpriced) do nUnpriced = nUnpriced + 1 end
+  return { pid = pid, from = from, to = to, segs = segs, time = time(), waiting = waiting, unpriced = nUnpriced, cands = #cands }
+end
+
+---------------------------------------------------------------------------
+-- Saved routes, one per character and profession
+---------------------------------------------------------------------------
+local function routeStore()
+  CraftListDB.routes = CraftListDB.routes or {}
+  local k = myKey()
+  CraftListDB.routes[k] = CraftListDB.routes[k] or {}
+  return CraftListDB.routes[k]
+end
+
+local MILESTONES = { 75, 150, 225, 300 }
+local function nextMilestone(cur)
+  for _, m in ipairs(MILESTONES) do if m > cur then return m end end
+  return 300
+end
+
+local function targetFor(pid, cur)
+  local t = CraftListDB.targets and CraftListDB.targets[myKey() .. ":" .. pid]
+  if not t or t <= cur then t = nextMilestone(cur) end
+  return math.min(300, t)
+end
+
+-- a route that still covers cur..target, or a fresh one
+local function routeFor(pid, cur, target, force)
+  local store = routeStore()
+  local r = store[pid]
+  local stale = not r or force or r.from > cur or r.to < target
+  -- some vendor prices weren't loaded yet: try again a couple of times once they are
+  local retry = not stale and r.waiting and r.waiting > 0 and (r.retries or 0) < 3 and time() - (r.time or 0) >= 2
+  if stale or retry then
+    local tries = retry and (r.retries or 0) + 1 or 0
+    r = findRoute(pid, cur, math.max(target, nextMilestone(cur)))
+    r.retries = tries
+    store[pid] = r
+  end
+  return r
+end
+
+-- crafts needed for each part of the route between cur and target
+local function plan(route, cur, target)
+  local steps = {}
+  local list = recipes(route.pid)
+  for _, seg in ipairs(route.segs) do
+    local a, b = math.max(cur, seg.from), math.min(target, seg.to)
+    if a < b then
+      local r = list.bySpell[seg.spell]
+      if r then
+        local exp = 0
+        for s = a, b - 1 do
+          local p = chance(r, s)
+          if p > 0 then exp = exp + 1 / p end
+        end
+        local crafts = math.ceil(exp * (1 + (CraftListDB.buffer or 0) / 100) - 0.001)
+        local last = steps[#steps]
+        if last and last.r == r then
+          last.to = b; last.crafts = last.crafts + crafts
+        else
+          steps[#steps + 1] = { r = r, from = a, to = b, crafts = crafts, plans = seg.plans, where = seg.where }
+        end
+      else
+        steps[#steps + 1] = { from = a, to = b, crafts = 0, gap = true }
+      end
+    end
+  end
+  return steps
+end
+
+---------------------------------------------------------------------------
+-- Materials: what the steps need, what you have, what to make on the way
+---------------------------------------------------------------------------
+local function newRow(id, n)
+  local own, mail = count(id), ownMail(id)
+  local onAlts, parts = altCount(id)
+  return { id = id, need = n, own = own, mail = mail, alts = onAlts, parts = parts, have = own + mail + onAlts }
+end
+
+-- a one-material recipe you can do with what you own (ore > bars, cloth > bolts, stone > grinding stones)
+local function fromOwned(id, ctx)
+  for _, r in ipairs(producers(id, ctx.pid)) do
+    if #r.mats == 1 and canMake(r, ctx) then return r end
+  end
+end
+
+local function materials(steps, ctx)
+  local base, order, produced, seen = {}, {}, {}, {}
+  local function note(id) if not seen[id] then seen[id] = true; order[#order + 1] = id end end
+  for _, st in ipairs(steps) do
+    if st.r then
+      for _, m in ipairs(st.r.mats) do base[m[1]] = (base[m[1]] or 0) + m[2] * st.crafts; note(m[1]) end
+      if st.r.creates > 0 then produced[st.r.creates] = (produced[st.r.creates] or 0) + st.crafts * st.r.made end
+    end
+  end
+  for _, st in ipairs(steps) do if st.r then unitCost(st.r.creates, ctx, 0) end end
+  for id in pairs(base) do unitCost(id, ctx, 0) end
+
+  local extra, reserved, rows = {}, {}, nil
+  for _ = 1, 6 do
+    local newExtra, newReserved = {}, {}
+    rows = {}
+    for _, id in ipairs(order) do
+      local n = (base[id] or 0) + (extra[id] or 0)
+      if n > 0 then
+        local row = newRow(id, n)
+        row.have = math.max(0, row.have - (reserved[id] or 0))
+        row.reserved = reserved[id]
+        row.crafted = math.min(produced[id] or 0, n)
+        local left = n - row.have - row.crafted
+        local makes = 0
+        -- turn what you own into this first
+        local r1 = left > 0 and fromOwned(id, ctx)
+        if r1 then
+          local src, k = r1.mats[1][1], r1.mats[1][2]
+          local srcHave = math.max(0, haveOf(src) - (reserved[src] or 0) - (base[src] or 0))
+          local crafts = math.min(math.floor(srcHave / k), math.ceil(left / r1.made))
+          if crafts > 0 then
+            makes = crafts
+            row.src, row.srcN, row.srcRec = src, crafts * k, r1
+            newReserved[src] = (newReserved[src] or 0) + crafts * k
+            left = left - crafts * r1.made
+            row.makeRec = r1
+          end
+        end
+        -- then make the rest if that's cheaper than buying it
+        local via = ctx.via[id]
+        if left > 0 and via then
+          local crafts = math.ceil(left / via.made)
+          makes = makes + crafts
+          row.makeRec = row.makeRec or via
+          for _, m in ipairs(via.mats) do
+            newExtra[m[1]] = (newExtra[m[1]] or 0) + m[2] * crafts
+            note(m[1])
+          end
+          left = 0
+        end
+        row.make = makes > 0 and makes or nil
+        row.missing = math.max(0, left)
+        rows[#rows + 1] = row
+      end
+    end
+    local same = true
+    for k, v in pairs(newExtra) do if extra[k] ~= v then same = false end end
+    for k, v in pairs(extra) do if newExtra[k] ~= v then same = false end end
+    for k, v in pairs(newReserved) do if reserved[k] ~= v then same = false end end
+    for k, v in pairs(reserved) do if newReserved[k] ~= v then same = false end end
+    extra, reserved = newExtra, newReserved
+    if same then break end
+  end
+  -- crafted items and makes first, then the rest by name
+  return rows
+end
+
+---------------------------------------------------------------------------
+-- Goals: what each crafter still needs, counting only what it has itself.
+-- Your alts read these at their mailbox and send exactly that.
+---------------------------------------------------------------------------
+local function fullName()
+  local ok, name, surname = pcall(UnitNameUnmodified or UnitName, "player")
+  if not ok or not name then return UnitName("player") end
+  if type(surname) ~= "string" or surname == "" then return name end
+  local sep = Constants and Constants.CharacterNameSeparatorConsts
+    and Constants.CharacterNameSeparatorConsts.CHARACTERNAME_SURNAME_SEPARATOR or " "
+  return name .. sep .. surname
+end
+
+local function goalFor(pid)
+  local rank = readSkill(pid)
+  if not rank or rank >= 300 then return nil end
+  local target = targetFor(pid, rank)
+  local route = routeStore()[pid]
+  if not route or route.from > rank or route.to < target then return nil end
+  noAlts = true
+  local ok, list, steps = pcall(function()
+    local ctx = newCtx(pid, rank)
+    local st = plan(route, rank, target)
+    return materials(st, ctx), st
+  end)
+  noAlts = false
+  local needs, alt, rowsOut, stepsOut = {}, {}, {}, {}
+  if ok and list then
+    for _, row in ipairs(list) do
+      if row.missing > 0 then
+        needs[row.id] = row.missing
+        local r1 = row.makeRec
+        if r1 and #r1.mats == 1 then alt[row.id] = { r1.mats[1][1], r1.mats[1][2] / r1.made } end
+      end
+      rowsOut[#rowsOut + 1] = { id = row.id, need = row.need, missing = row.missing, make = row.make,
+        smelt = row.makeRec and row.makeRec.prof == MINING or nil }
+    end
+    for _, st in ipairs(steps or {}) do
+      stepsOut[#stepsOut + 1] = { spell = st.r and st.r.spell, from = st.from, to = st.to, crafts = st.crafts }
+    end
+  end
+  return {
+    owner = myKey(), pid = pid, name = UnitName("player"), full = fullName(), realm = GetRealmName(),
+    faction = UnitFactionGroup("player"), skill = rank, target = target, needs = needs, alt = alt,
+    rows = rowsOut, steps = stepsOut, time = time(), sent = {},
+  }
+end
+
+saveGoals = function()
+  if not CraftListDB then return end
+  CraftListDB.goals = CraftListDB.goals or {}
+  local me = myKey()
+  for k, g in pairs(CraftListDB.goals) do
+    if g.owner == me then CraftListDB.goals[k] = nil end
+  end
+  for pid in pairs(readSkills()) do
+    if not PROF[pid].gather then
+      local g = goalFor(pid)
+      if g then CraftListDB.goals[me .. ":" .. pid] = g end
+    end
+  end
+end
+
+---------------------------------------------------------------------------
+-- Profession windows: crafting buttons, known recipes, real colors
+---------------------------------------------------------------------------
+local tsOpen, tsProf, tsMode, recipeCache = false, nil, nil, nil
+local refresh -- set further down
+local job     -- the batch being crafted: { name, label, total, done, st, et, casting, stopped }
+
+local function itemFromLink(link) return link and tonumber(link:match("item:(%d+)")) end
+
+local function windowProf()
+  if tsMode == "craft" then
+    if GetCraftDisplaySkillLine then
+      local ok, name = pcall(GetCraftDisplaySkillLine)
+      if ok then return profFromName(name) end
+    end
+    if GetCraftSkillLine then
+      local ok, name = pcall(GetCraftSkillLine, 1)
+      if ok then return profFromName(name) end
+    end
+    return nil
+  end
+  if C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo then
+    local ok, info = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
+    if ok and info then
+      if info.professionID and PROF[info.professionID] then return info.professionID end
+      local pid = profFromName(info.professionName)
+      if pid then return pid end
+    end
+  end
+  if GetTradeSkillLine then
+    local ok, name = pcall(GetTradeSkillLine)
+    if ok then return profFromName(name) end
+  end
+end
+
+local KIND = { optimal = "orange", medium = "yellow", easy = "green", trivial = "grey", difficult = "orange" }
+
+local function buildRecipes()
+  local byItem, byName, all = {}, {}, {}
+  local function add(r, id)
+    if id then byItem[id] = r end
+    byName[r.name] = r
+    all[#all + 1] = r
+  end
+  if tsMode == "craft" then
+    if GetNumCrafts and GetCraftInfo then
+      local ok, n = pcall(GetNumCrafts)
+      for i = 1, (ok and n or 0) do
+        local name, _, kind, avail = GetCraftInfo(i)
+        if name and kind ~= "header" then
+          add({ craftIndex = i, name = name, avail = avail or 0, kind = KIND[kind] }, nil)
+        end
+      end
+    end
+    return { byItem = byItem, byName = byName, all = all }
+  end
+  if GetNumTradeSkills and GetTradeSkillInfo then
+    local ok, n = pcall(GetNumTradeSkills)
+    for i = 1, (ok and n or 0) do
+      local name, kind, avail = GetTradeSkillInfo(i)
+      if name and kind ~= "header" and kind ~= "subheader" then
+        local id = GetTradeSkillItemLink and itemFromLink(GetTradeSkillItemLink(i))
+        add({ index = i, name = name, avail = avail or 0, kind = KIND[kind] }, id)
+      end
+    end
+  end
+  if #all == 0 and C_TradeSkillUI and C_TradeSkillUI.GetAllRecipeIDs then
+    local ok, ids = pcall(C_TradeSkillUI.GetAllRecipeIDs)
+    for _, rid in ipairs((ok and ids) or {}) do
+      local info = C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(rid)
+      if info and info.learned and info.name then
+        local id
+        if C_TradeSkillUI.GetRecipeOutputItemData then
+          local okO, out = pcall(C_TradeSkillUI.GetRecipeOutputItemData, rid)
+          id = okO and out and out.itemID
+        end
+        if not id and C_TradeSkillUI.GetRecipeItemLink then id = itemFromLink(C_TradeSkillUI.GetRecipeItemLink(rid)) end
+        local kind = type(info.difficulty) == "string" and KIND[info.difficulty] or nil
+        add({ recipeID = rid, spell = rid, name = info.name, avail = info.numAvailable or 0, kind = kind }, id)
+      end
+    end
+  end
+  return { byItem = byItem, byName = byName, all = all }
+end
+
+local function getRecipes()
+  if not tsOpen then return nil end
+  recipeCache = recipeCache or buildRecipes()
+  return recipeCache
+end
+
+-- how many you can make from what's in your bags (the game's own count reads 0 on some windows)
+local function bagMakes(r)
+  local n
+  for _, m in ipairs(r.mats) do
+    local k = math.floor(rawCount(m[1], false) / math.max(1, m[2]))
+    if not n or k < n then n = k end
+  end
+  return n or 0
+end
+
+local findRecipeRaw
+-- the recipe in the open window for one of ours
+local function findRecipe(r)
+  local w = findRecipeRaw(r)
+  if w then w.avail = math.max(w.avail or 0, bagMakes(r)) end
+  return w
+end
+
+findRecipeRaw = function(r)
+  local rc = getRecipes()
+  if not rc or not r or r.prof ~= tsProf then return nil end
+  if r.creates > 0 and rc.byItem[r.creates] then return rc.byItem[r.creates] end
+  if rc.byName[r.name] then return rc.byName[r.name] end
+  local n = r.creates > 0 and GetItemInfo(r.creates)
+  if n and rc.byName[n] then return rc.byName[n] end
+  local want_ = r.name:lower()
+  for _, w in ipairs(rc.all) do
+    if w.spell == r.spell or (w.name and w.name:lower() == want_) then return w end
+  end
+end
+
+-- which of ours is this window line?
+local function matchData(w, pid, itemID)
+  local list = recipes(pid)
+  if w.spell and list.bySpell[w.spell] then return list.bySpell[w.spell] end
+  if itemID and list.byCreates[itemID] then
+    local cands = list.byCreates[itemID]
+    if #cands == 1 then return cands[1] end
+    for _, r in ipairs(cands) do if r.name == w.name then return r end end
+    return cands[1]
+  end
+  return list.byName[w.name]
+end
+
+-- remember what's learned and fix colors that differ from the shipped data
+local function learnWindow()
+  if not tsOpen or not tsProf then return end
+  local rc = getRecipes()
+  if not rc then return end
+  local rank = readSkill(tsProf)
+  local known = knownSet()
+  CraftListDB.fix = CraftListDB.fix or {}
+  CraftListDB.seen = CraftListDB.seen or {}
+  CraftListDB.seen[myKey()] = CraftListDB.seen[myKey()] or {}
+  CraftListDB.seen[myKey()][tsProf] = time()
+  local itemOf = {}
+  for id, w in pairs(rc.byItem) do itemOf[w] = id end
+  local fixed = 0
+  for _, w in ipairs(rc.all) do
+    local r = matchData(w, tsProf, itemOf[w])
+    if r then
+      known[r.spell] = true
+      if rank and w.kind then
+        local y, g = r.y, r.g
+        local green = (y + g) / 2
+        if w.kind == "grey" and g > rank then g = rank
+        elseif w.kind == "orange" and y <= rank then
+          local span = g - y; y = rank + 1; if g <= y then g = y + math.max(5, span) end
+        elseif w.kind == "yellow" and (y > rank or green <= rank) then
+          if y > rank then y = rank end
+          if (y + g) / 2 <= rank then g = 2 * rank - y + 2 end
+        elseif w.kind == "green" and (green > rank or g <= rank) then
+          if g <= rank then g = rank + 1 end
+          if (y + g) / 2 > rank then y = math.max(r.learn, 2 * rank - g) end
+        end
+        if y ~= r.y or g ~= r.g then
+          r.y, r.g = y, g
+          CraftListDB.fix[r.spell] = { y = y, g = g }
+          fixed = fixed + 1
+        end
+      end
+    end
+  end
+  if fixed > 0 then
+    -- colors changed, so the saved route may not be the cheapest any more
+    local store = routeStore()
+    if store[tsProf] then store[tsProf].dirty = true end
+  end
+end
+
+local function clearJob(after)
+  local this = job
+  C_Timer.After(after or 3, function()
+    if job == this then job = nil; if refresh then refresh() end end
+  end)
+end
+
+local queue = {}
+local nextInQueue
+
+local function startCraft(w, n, label)
+  if not w or not n or n < 1 then return end
+  if InCombatLockdown and InCombatLockdown() then Print("can't craft in combat."); return end
+  if job and not job.stopped then Print("already crafting. Wait for it to finish, or move to stop it."); return end
+  local ok, err
+  if w.craftIndex and DoCraft then
+    n = 1 -- enchants go on one item at a time
+    ok, err = pcall(DoCraft, w.craftIndex)
+  elseif w.index and DoTradeSkill then
+    ok, err = pcall(DoTradeSkill, w.index, n)
+  elseif w.recipeID and C_TradeSkillUI and C_TradeSkillUI.CraftRecipe then
+    ok, err = pcall(C_TradeSkillUI.CraftRecipe, w.recipeID, n)
+  else
+    ok, err = false, "no way to start crafting found"
+  end
+  if not ok then Print("couldn't start crafting: " .. tostring(err)); return end
+  job = { name = w.name, label = label or w.name, total = n, done = 0 }
+  local this = job
+  C_Timer.After(2.5, function()
+    if job == this and not job.st then job.stopped = "didn't start"; queue = {}; clearJob(4); if refresh then refresh() end end
+  end)
+  if refresh then refresh() end
+end
+
+-- several crafts in a row (SMELT ALL): the next one starts when the last finishes
+nextInQueue = function(loud)
+  while queue[1] do
+    local q = table.remove(queue, 1)
+    recipeCache = nil
+    local w = findRecipe(q.r)
+    if w and (w.avail or 0) > 0 then
+      startCraft(w, math.min(q.n, w.avail), q.r.name .. (#queue > 0 and string.format("  (+%d more)", #queue) or ""))
+      return true
+    end
+    if loud then
+      if not tsOpen then Print("the smelting window isn't open.")
+      elseif not w then Print(q.r.name .. ": not found in the open window (" .. tostring(tsProf and profName(tsProf)) .. ").")
+      else
+        local ore = q.r.mats[1] and GetItemInfo(q.r.mats[1][1]) or "the ore"
+        Print(q.r.name .. ": nothing to smelt, " .. ore .. " isn't in your bags (bank, mail or alts don't count here).")
+      end
+    end
+  end
+end
+
+local function onCast(event, unit)
+  if unit ~= "player" or not job then return end
+  if event == "UNIT_SPELLCAST_START" then
+    local name, _, _, st, et = UnitCastingInfo("player")
+    if name and (name == job.name or not job.st) then
+      job.st, job.et, job.casting = st, et, true
+    end
+  elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+    if job.casting then
+      job.casting = false
+      job.done = job.done + 1
+      if job.done >= job.total then
+        job.stopped = "done"; clearJob(3)
+        if queue[1] then C_Timer.After(0.8, function() recipeCache = nil; nextInQueue() end) end
+      end
+    end
+  elseif event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" then
+    if job.casting then
+      job.casting = false
+      job.stopped = "stopped"
+      queue = {}
+      clearJob(4)
+    end
+  end
+end
+
+---------------------------------------------------------------------------
+-- Window
+---------------------------------------------------------------------------
+local frame, rows, stepLines, profChips = nil, {}, {}, {}
+local current -- profession shown
+local viewing -- key of another character's saved list being browsed, or nil
+local toggleMenu, startScan, placeSecure
+local openBtn -- secure button that opens the profession window (CRAFT needs it open)
+local smeltBtn -- secure button that casts Smelting (opening the smelting window needs a real click)
+
+local function shownProf()
+  local have = readSkills()
+  if current and have[current] then return current end
+  if CraftListDB.last and CraftListDB.last[myKey()] and have[CraftListDB.last[myKey()]] then
+    current = CraftListDB.last[myKey()]
+    return current
+  end
+  for _, p in ipairs(PROFS) do
+    if have[p.id] and not p.gather and have[p.id].rank < 300 then current = p.id; return current end
+  end
+  for _, p in ipairs(PROFS) do
+    if have[p.id] and not p.gather then current = p.id; return current end
+  end
+end
+
+local function pick(pid)
+  current = pid
+  CraftListDB.last = CraftListDB.last or {}
+  CraftListDB.last[myKey()] = pid
+  if refresh then refresh() end
+end
+
+local function setTarget(v)
+  local pid = shownProf()
+  if not v or not pid then return end
+  local cur = readSkill(pid) or 1
+  CraftListDB.targets = CraftListDB.targets or {}
+  CraftListDB.targets[myKey() .. ":" .. pid] = math.max(cur + 1, math.min(300, math.floor(v)))
+  refresh()
+  pcall(saveGoals)
+end
+
+local function searchAH(names)
+  local a = Auctionator and Auctionator.API and Auctionator.API.v1
+  if #names == 0 then Print("nothing to buy."); return end
+  if not (a and a.MultiSearchExact) then
+    -- no Auctionator: put the first one in the auction house's own search box
+    local box = _G.BrowseName
+    if box and _G.AuctionFrame and _G.AuctionFrame:IsShown() then
+      box:SetText(names[1])
+      if AuctionFrameBrowse_Search then pcall(AuctionFrameBrowse_Search) end
+      if #names > 1 then Print("also on the list: " .. table.concat(names, ", ", 2)) end
+    else
+      Print("open the auction house first, then click again.")
+    end
+    return
+  end
+  local ok = pcall(a.MultiSearchExact, CALLER, names)
+  if not ok then Print("open the auction house first, then click again.") end
+end
+
+local function makeRow(i)
+  local r = CreateFrame("Button", nil, frame)
+  r:SetSize(W - PAD * 2, ROW_H)
+  r.hl = r:CreateTexture(nil, "BACKGROUND"); r.hl:SetAllPoints()
+  r.hl:SetColorTexture(1, 1, 1, 0.06); r.hl:Hide()
+  r.icon = r:CreateTexture(nil, "ARTWORK")
+  r.icon:SetSize(16, 16); r.icon:SetPoint("LEFT", 0, 0)
+  r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  local function col(x, w, justify, size, a)
+    local t = text(r, size or 12, 1, 1, 1, a or 0.9)
+    t:SetPoint("LEFT", x, 0); t:SetWidth(w); t:SetJustifyH(justify or "LEFT")
+    return t
+  end
+  r.name   = col(22, 220)
+  r.need   = col(X_NEED, 60, "RIGHT", 12, 0.85)
+  r.have   = col(X_HAVE, W_HAVE, "RIGHT", 11, 0.6)
+  r.status = col(X_STAT, W - PAD * 2 - X_STAT, "LEFT", 12)
+  r.act = chip(r, "MAKE", 104)
+  r.act:SetHeight(18); r.act:SetPoint("RIGHT", 0, 0); r.act:Hide()
+  r.act:SetScript("OnClick", function() startCraft(r.actRec, r.actN, r.actLabel) end)
+
+  r:SetScript("OnEnter", function(self)
+    if not self.row then return end
+    local row = self.row
+    self.hl:Show()
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetItemByID(row.id)
+    GameTooltip:AddLine(" ")
+    if row.alts > 0 or row.own > 0 or row.mail > 0 then
+      GameTooltip:AddDoubleLine("You", tostring(row.own), 1, 1, 1, 1, 1, 1)
+      if row.mail > 0 then GameTooltip:AddDoubleLine("You, in the mail", tostring(row.mail), 1, 1, 1, 1, 1, 1) end
+      for _, p in ipairs(row.parts) do
+        local label = p.name .. "  |cff808080" .. ago(p.time) .. "|r"
+        local num = tostring(p.n) .. (p.mail > 0 and ("  |cff808080(" .. p.mail .. " in mail)|r") or "")
+        GameTooltip:AddDoubleLine(label, num, 1, 1, 1, 1, 1, 1)
+      end
+    end
+    if (row.reserved or 0) > 0 then
+      GameTooltip:AddLine(string.format("%d of yours are used to make something else on the list.", row.reserved), 0.8, 0.8, 0.8, true)
+    end
+    if (row.crafted or 0) > 0 then
+      GameTooltip:AddLine(string.format("%d come from your skill-up crafts.", row.crafted), 0.4, 0.86, 0.5, true)
+    end
+    if row.src then
+      GameTooltip:AddLine(string.format("Make %d from %d %s you have.", row.srcN / row.srcRec.mats[1][2] * row.srcRec.made,
+        row.srcN, GetItemInfo(row.src) or "items"), 0.4, 0.86, 0.5, true)
+    end
+    if row.make and row.makeRec then
+      GameTooltip:AddLine(string.format("Make %d yourself (%s): cheaper than buying.", row.make, row.makeRec.name), 1, 0.82, 0.45, true)
+    end
+    local p, where = buyPrice(row.id)
+    if p then GameTooltip:AddDoubleLine(where == "vendor" and "Vendor price" or "AH price", money(p), 0.6, 0.6, 0.6, 0.6, 0.6, 0.6) end
+    GameTooltip:AddLine("Click to search the AH, shift-click to link.", 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  r:SetScript("OnLeave", function(self) self.hl:Hide(); GameTooltip:Hide() end)
+  r:SetScript("OnClick", function(self)
+    if not self.row then return end
+    local name, link = GetItemInfo(self.row.id)
+    if IsShiftKeyDown() and link then insertLink(link); return end
+    if name then searchAH({ name }) end
+  end)
+  return r
+end
+
+local function makeStep(i)
+  local s = scheme()
+  local l = CreateFrame("Frame", nil, frame)
+  l:SetSize(W - PAD * 2, STEP_H + 4)
+  l:EnableMouse(true)
+  l.range = text(l, 11, 1, 1, 1, 0.5); l.range:SetPoint("LEFT", 0, 0); l.range:SetWidth(64)
+  l.name = text(l, 12, 1, 1, 1, 0.9); l.name:SetPoint("LEFT", 66, 0); l.name:SetWidth(210)
+  l.crafts = text(l, 12, 1, 1, 1, 0.9); l.crafts:SetPoint("LEFT", 276, 0); l.crafts:SetWidth(44); l.crafts:SetJustifyH("RIGHT")
+  l.info = text(l, 11, 1, 1, 1, 0.45); l.info:SetPoint("LEFT", 332, 0); l.info:SetWidth(W - PAD * 2 - 332)
+  l.go = chip(l, "CRAFT", 70)
+  l.go:SetHeight(18); l.go:SetPoint("RIGHT", 0, 0)
+  l.amt = CreateFrame("EditBox", nil, l)
+  l.amt:SetSize(36, 18); l.amt:SetPoint("RIGHT", l.go, "LEFT", -4, 0)
+  l.amt:SetAutoFocus(false); l.amt:SetNumeric(true); l.amt:SetMaxLetters(3)
+  l.amt:SetFont(fontPath(), 11, ""); l.amt:SetJustifyH("CENTER"); l.amt:SetTextColor(1, 1, 1, 0.95)
+  local abg = l.amt:CreateTexture(nil, "BACKGROUND"); abg:SetAllPoints()
+  abg:SetColorTexture(s.btn[1], s.btn[2], s.btn[3], 1)
+  edges(l.amt, 1, 1, 1, 0.18)
+  l.amt:SetScript("OnTextChanged", function(self, user) if user then l.custom = tonumber(self:GetText()) end end)
+  l.amt:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+  l.amt:SetScript("OnEscapePressed", function(self) l.custom = nil; self:ClearFocus(); refresh() end)
+  l.go:SetScript("OnClick", function()
+    startCraft(l.rec, tonumber(l.amt:GetText()) or 0, l.label)
+    l.custom = nil
+  end)
+  l.go:HookScript("OnEnter", function(self)
+    if not l.rec then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:AddLine("Craft " .. (l.label or "?"), 1, 1, 1)
+    GameTooltip:AddLine(string.format("You can make %d with what's in your bags.", l.rec.avail or 0), 0.8, 0.8, 0.8, true)
+    if l.rec.craftIndex then GameTooltip:AddLine("Enchants go on one item at a time: click, then pick the item.", 0.8, 0.8, 0.8, true) end
+    GameTooltip:AddLine("Moving or getting hit stops it, like normal crafting.", 0.6, 0.6, 0.6, true)
+    GameTooltip:Show()
+  end)
+  l.go:HookScript("OnLeave", function() GameTooltip:Hide() end)
+  l:SetScript("OnEnter", function(self)
+    local st = self.st
+    if not st or not st.r then return end
+    local r = st.r
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    if r.creates > 0 then GameTooltip:SetItemByID(r.creates) else GameTooltip:AddLine(r.name, 1, 1, 1) end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(string.format("|cffff8040%d|r  |cffffff00%d|r  |cff40c040%d|r  |cff808080%d|r", r.learn, r.y,
+      math.floor((r.y + r.g) / 2), r.g), 1, 1, 1)
+    if st.matCost then
+      GameTooltip:AddDoubleLine("Materials each", money(st.matCost), 0.8, 0.8, 0.8, 1, 1, 1)
+      if (st.back or 0) > 0 then GameTooltip:AddDoubleLine("Vendor pays each", money(st.back), 0.8, 0.8, 0.8, 1, 1, 1) end
+    end
+    if isKnown(r) then GameTooltip:AddLine("You know this.", 0.4, 0.86, 0.5)
+    elseif r.trainer then GameTooltip:AddLine("From your trainer.", 0.8, 0.8, 0.8)
+    elseif r.plans > 0 then
+      local _, link = GetItemInfo(r.plans)
+      GameTooltip:AddLine("Needs " .. (link or "a recipe item") .. (st.plans and st.plans > 0 and (" (~" .. money(st.plans) .. (st.where == "vendor" and " at a vendor)" or " on the AH)")) or ""), 1, 0.82, 0.45, true)
+    end
+    GameTooltip:Show()
+  end)
+  l:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  l.go:Hide(); l.amt:Hide()
+  return l
+end
+
+local function savePos()
+  local point, _, rel, x, y = frame:GetPoint()
+  CraftListDB.pos = { point = point, rel = rel, x = x, y = y }
+end
+
+local function build()
+  local ar, ag, ab = accent()
+  local s = scheme()
+
+  frame = CreateFrame("Frame", "CraftListFrame", UIParent)
+  frame:SetSize(W, 400)
+  local p = CraftListDB.pos
+  if p and p.point then frame:SetPoint(p.point, UIParent, p.rel or p.point, p.x or 0, p.y or 0)
+  else frame:SetPoint("CENTER", -200, 40) end
+  frame:SetMovable(true); frame:EnableMouse(true); frame:SetClampedToScreen(true)
+  frame:RegisterForDrag("LeftButton")
+  frame:SetScript("OnDragStart", function(self)
+    if not (InCombatLockdown and InCombatLockdown()) then
+      if smeltBtn then smeltBtn:Hide() end
+      if openBtn then openBtn:Hide() end
+    end
+    self:StartMoving()
+  end)
+  frame:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); savePos(); refresh() end)
+  frame:SetFrameStrata("HIGH")
+  tinsert(UISpecialFrames, "CraftListFrame")
+
+  local bg = frame:CreateTexture(nil, "BACKGROUND"); bg:SetAllPoints()
+  bg:SetColorTexture(s.bg[1], s.bg[2], s.bg[3], 0.94)
+  edges(frame, 1, 1, 1, 0.15)
+  local bar = frame:CreateTexture(nil, "ARTWORK")
+  bar:SetColorTexture(ar, ag, ab, 0.25)
+  bar:SetPoint("TOPLEFT", 1, -1); bar:SetPoint("TOPRIGHT", -1, -1); bar:SetHeight(2)
+  frame.bar = frame:CreateTexture(nil, "OVERLAY")
+  frame.bar:SetColorTexture(ar, ag, ab, 0.95)
+  frame.bar:SetPoint("TOPLEFT", 1, -1); frame.bar:SetHeight(2); frame.bar:SetWidth(1)
+
+  local eyebrow = text(frame, 11, ar, ag, ab, 0.9)
+  eyebrow:SetPoint("TOPLEFT", PAD, -12); eyebrow:SetText("CRAFTLIST")
+
+  local close = CreateFrame("Button", nil, frame)
+  close:SetSize(20, 20); close:SetPoint("TOPRIGHT", -8, -7)
+  close.fs = text(close, 15, 1, 1, 1, 0.4); close.fs:SetPoint("CENTER"); close.fs:SetText("×")
+  close:SetScript("OnEnter", function(self) self.fs:SetTextColor(1, 0.45, 0.4, 1) end)
+  close:SetScript("OnLeave", function(self) self.fs:SetTextColor(1, 1, 1, 0.4) end)
+  close:SetScript("OnClick", function() frame:Hide() end)
+
+  frame.title = text(frame, 14, 1, 1, 1, 0.95)
+  frame.title:SetPoint("TOPLEFT", PAD, -32)
+  frame.sub = text(frame, 11, 1, 1, 1, 0.55)
+  frame.sub:SetPoint("TOPLEFT", PAD, -52); frame.sub:SetWidth(W - PAD * 2)
+
+  -- one chip per profession you have
+  for i, pr in ipairs(PROFS) do
+    if not pr.gather then
+      local c = chip(frame, pr.short, 80)
+      c.pid = pr.id
+      c:SetScript("OnClick", function() pick(pr.id) end)
+      profChips[#profChips + 1] = c
+    end
+  end
+
+  -- target controls
+  local lbl = text(frame, 11, 1, 1, 1, 0.5)
+  lbl:SetPoint("TOPLEFT", PAD, -108); lbl:SetText("CHECK UNTIL")
+  local minus = chip(frame, "-", 20)
+  minus:SetPoint("TOPLEFT", PAD + 80, -104)
+  local eb = CreateFrame("EditBox", nil, frame)
+  eb:SetSize(44, 20); eb:SetPoint("LEFT", minus, "RIGHT", 4, 0)
+  eb:SetAutoFocus(false); eb:SetNumeric(true); eb:SetMaxLetters(3)
+  eb:SetFont(fontPath(), 12, ""); eb:SetJustifyH("CENTER"); eb:SetTextColor(1, 1, 1, 0.95)
+  local ebg = eb:CreateTexture(nil, "BACKGROUND"); ebg:SetAllPoints()
+  ebg:SetColorTexture(s.btn[1], s.btn[2], s.btn[3], 1)
+  edges(eb, 1, 1, 1, 0.18)
+  eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+  eb:SetScript("OnEscapePressed", function(self) self.cancel = true; self:ClearFocus() end)
+  eb:SetScript("OnEditFocusLost", function(self)
+    if self.cancel then self.cancel = nil; refresh(); return end
+    setTarget(tonumber(self:GetText()))
+  end)
+  frame.eb = eb
+  local plus = chip(frame, "+", 20)
+  plus:SetPoint("LEFT", eb, "RIGHT", 4, 0)
+  minus:SetScript("OnClick", function() setTarget((frame.target or 300) - (IsShiftKeyDown() and 5 or 1)) end)
+  plus:SetScript("OnClick", function() setTarget((frame.target or 1) + (IsShiftKeyDown() and 5 or 1)) end)
+
+  frame.milestones = {}
+  local prev = plus
+  for _, m in ipairs(MILESTONES) do
+    local c = chip(frame, tostring(m), 40)
+    c:SetPoint("LEFT", prev, "RIGHT", prev == plus and 14 or 4, 0)
+    c:SetScript("OnClick", function() setTarget(m) end)
+    c.value = m
+    frame.milestones[#frame.milestones + 1] = c
+    prev = c
+  end
+
+  frame.find = chip(frame, "FIND CHEAPEST ROUTE", 160)
+  frame.find:SetPoint("TOPRIGHT", -PAD, -104)
+  frame.find:SetScript("OnClick", function()
+    local pid = shownProf()
+    if not pid then return end
+    local cur = readSkill(pid) or 1
+    local r = routeFor(pid, cur, targetFor(pid, cur), true)
+    if not ahPrice(2589) and not ahPrice(2770) and not ahPrice(2592) then
+      Print("no AH prices found: open the auction house and click SCAN AH (or scan with Auctionator) first.")
+    end
+    Print(string.format("%s route %d-%d worked out from %d usable recipes.", profName(pid), r.from, r.to, r.cands or 0))
+    refresh()
+    pcall(saveGoals)
+  end)
+  tip(frame.find, "Find the cheapest route",
+    "Uses your Auctionator prices to pick, for every skill point, the recipe with the lowest material cost minus what a vendor pays for the result, divided by the chance of a point.",
+    "Materials you can make for less than they cost (bars, bolts, stones...) are made instead of bought.",
+    "Scan the auction house first for fresh prices.")
+
+  -- options
+  frame.plans = chip(frame, "BUY RECIPES", 100)
+  frame.plans:SetPoint("TOPLEFT", PAD, -132)
+  frame.plans:SetScript("OnClick", function()
+    CraftListDB.plans = not CraftListDB.plans
+    local pid = shownProf()
+    if pid and routeStore()[pid] then routeStore()[pid].dirty = true end
+    refresh()
+  end)
+  tip(frame.plans, "Recipes you'd have to buy",
+    "On: the route may use plans, patterns and formulas you don't know yet, if they're on the AH or you've seen them at a vendor. Their price counts toward the route.",
+    "Off: only recipes you know or can learn from your trainer.",
+    "Click FIND CHEAPEST ROUTE after changing this.")
+  frame.bank = chip(frame, "COUNT BANK", 96)
+  frame.bank:SetPoint("LEFT", frame.plans, "RIGHT", 4, 0)
+  frame.bank:SetScript("OnClick", function() CraftListDB.bank = not CraftListDB.bank; refresh() end)
+  frame.alts = chip(frame, "COUNT ALTS", 90)
+  frame.alts:SetPoint("LEFT", frame.bank, "RIGHT", 4, 0)
+  frame.alts:SetScript("OnClick", function() CraftListDB.alts = not CraftListDB.alts; refresh() end)
+  tip(frame.alts, "Your other characters", function()
+    local list = alts()
+    if #list == 0 then
+      GameTooltip:AddLine("None yet. Log in on an alt once and its bags are saved. Open its bank once to save that too.", 0.8, 0.8, 0.8, true)
+    else
+      for _, c in ipairs(list) do GameTooltip:AddDoubleLine(c.name, ago(c.time), 1, 1, 1, 0.6, 0.6, 0.6) end
+      GameTooltip:AddLine("Saved when you play them. Open each bank once so it's counted.", 0.8, 0.8, 0.8, true)
+    end
+  end)
+  frame.mail = chip(frame, "COUNT MAIL", 86)
+  frame.mail:SetPoint("LEFT", frame.alts, "RIGHT", 4, 0)
+  frame.mail:SetScript("OnClick", function() CraftListDB.mail = not CraftListDB.mail; refresh() end)
+  tip(frame.mail, "Mail", "Your mailbox is read each time you open it. Things you mail to your own characters count on them straight away.")
+  frame.buffer = chip(frame, "SPARE 10%", 86)
+  frame.buffer:SetPoint("LEFT", frame.mail, "RIGHT", 4, 0)
+  frame.buffer:SetScript("OnClick", function()
+    local b = CraftListDB.buffer or 0
+    CraftListDB.buffer = (b == 0 and 10) or (b == 10 and 25) or 0
+    refresh()
+  end)
+  tip(frame.buffer, "Spare crafts", "Yellow and green crafts don't always give a point. This adds extra materials for bad luck.")
+
+  frame.scanBtn = chip(frame, "SCAN AH", 92)
+  frame.scanBtn:SetPoint("TOPRIGHT", -PAD, -132)
+  frame.scanBtn:SetScript("OnClick", function() startScan() end)
+  tip(frame.scanBtn, "Scan the auction house",
+    "Searches the auction house for just the materials (and recipes) this profession could use from your skill up to your target. Then works the route out again.",
+    "Prices less than an hour old are skipped. Click again to stop.",
+    "Your own scan is used over Auctionator's prices while it's less than a day old. Works without Auctionator.")
+
+  frame.ctrl = { lbl, minus, eb, plus, frame.find, frame.plans, frame.bank, frame.alts, frame.mail, frame.buffer, frame.scanBtn }
+
+  local cast = CreateFrame("Frame", nil, frame)
+  cast:SetSize(W - PAD * 2, 18)
+  local ctrack = cast:CreateTexture(nil, "BACKGROUND"); ctrack:SetAllPoints()
+  ctrack:SetColorTexture(s.btn[1], s.btn[2], s.btn[3], 1)
+  edges(cast, 1, 1, 1, 0.15)
+  cast.fill = cast:CreateTexture(nil, "ARTWORK")
+  cast.fill:SetColorTexture(ar, ag, ab, 0.85)
+  cast.fill:SetPoint("TOPLEFT", 1, -1); cast.fill:SetPoint("BOTTOMLEFT", 1, 1); cast.fill:SetWidth(1)
+  cast.text = text(cast, 11, 1, 1, 1, 0.95)
+  cast.text:SetPoint("CENTER"); cast.text:SetJustifyH("CENTER"); cast.text:SetWidth(W - PAD * 2 - 8)
+  cast:SetScript("OnUpdate", function(self)
+    if not job then self:Hide(); return end
+    local now = GetTime() * 1000
+    local frac, left = 0, 0
+    if job.st and job.et and job.et > job.st then
+      local per = (job.et - job.st) / 1000
+      if job.casting then
+        frac = math.max(0, math.min(1, (now - job.st) / (job.et - job.st)))
+        left = math.max(0, (job.et - now) / 1000) + math.max(0, job.total - job.done - 1) * per
+      else
+        left = math.max(0, job.total - job.done) * per
+      end
+    end
+    local whole = math.min(1, (job.done + frac) / math.max(1, job.total))
+    self.fill:SetWidth(math.max(1, (self:GetWidth() - 2) * whole))
+    local tail
+    if job.stopped then tail = "  ·  " .. job.stopped
+    elseif left > 0 then tail = string.format("  ·  %d:%02d left", math.floor(left / 60), math.floor(left % 60))
+    else tail = "" end
+    self.text:SetText(string.format("%s   %d / %d%s", job.label or "", job.done, job.total, tail))
+  end)
+  cast:Hide()
+  frame.cast = cast
+
+  frame.stepsHead = text(frame, 11, ar, ag, ab, 0.9)
+  frame.stepsHead:SetText("CRAFTS")
+  for i = 1, MAX_STEPS do stepLines[i] = makeStep(i) end
+
+  frame.matHead = text(frame, 11, ar, ag, ab, 0.9)
+  frame.matHead:SetText("MATERIALS")
+  frame.colNeed = text(frame, 11, 1, 1, 1, 0.4); frame.colNeed:SetText("NEED"); frame.colNeed:SetJustifyH("RIGHT"); frame.colNeed:SetWidth(60)
+  frame.colHave = text(frame, 11, 1, 1, 1, 0.4); frame.colHave:SetText("HAVE"); frame.colHave:SetJustifyH("RIGHT"); frame.colHave:SetWidth(W_HAVE)
+  frame.colStat = text(frame, 11, 1, 1, 1, 0.4); frame.colStat:SetText("STILL NEED")
+
+  for i = 1, MAX_ROWS do rows[i] = makeRow(i) end
+  frame.more = text(frame, 11, 1, 1, 1, 0.45)
+
+  frame.foot = text(frame, 11, 1, 1, 1, 0.55)
+  frame.foot:SetWidth(W - PAD * 2 - 140)
+  frame.buy = chip(frame, "SEARCH MISSING", 120)
+  frame.buy:SetScript("OnClick", function()
+    local names = {}
+    for _, row in ipairs(frame.list or {}) do
+      if row.missing > 0 then
+        local n = GetItemInfo(row.id)
+        if n then names[#names + 1] = n end
+      end
+    end
+    searchAH(names)
+  end)
+
+  frame.empty = text(frame, 12, 1, 1, 1, 0.7)
+  frame.empty:SetWidth(W - PAD * 2); frame.empty:SetWordWrap(true)
+
+  -- SMELT ALL: every bar on the list, one after another (needs the smelting window open)
+  frame.smeltAll = chip(frame, "SMELT ALL", 120)
+  frame.smeltAll:SetScript("OnClick", function(self)
+    if job and not job.stopped then Print("already crafting."); return end
+    queue = {}
+    for _, q in ipairs(self.list or {}) do queue[#queue + 1] = { r = q.r, n = q.n } end
+    if #queue == 0 then Print("nothing to smelt.") end
+    nextInQueue(true)
+  end)
+  tip(frame.smeltAll, "Smelt everything on the list", "Smelts each kind of bar in turn, from ore you have in your bags.",
+    "Moving or getting hit stops it.")
+  frame.smeltAll:Hide()
+
+  -- OPEN SMELTING: a real spell cast, so it has to be a secure button
+  smeltBtn = chip(UIParent, "OPEN SMELTING", 120, "SecureActionButtonTemplate", "CraftListSmeltButton")
+  smeltBtn:SetFrameStrata("DIALOG")
+  local down = GetCVarBool and GetCVarBool("ActionButtonUseKeyDown")
+  smeltBtn:RegisterForClicks(down and "AnyDown" or "AnyUp")
+  smeltBtn:SetAttribute("type", "spell")
+  smeltBtn:SetAttribute("spell", spellName(2656) or "Smelting")
+  tip(smeltBtn, "Open smelting", "Opens your smelting window. Then SMELT ALL turns the ore on the list into bars.")
+  smeltBtn:Hide()
+
+  -- OPEN SMITHING etc.: opens the profession window so the CRAFT buttons can work
+  openBtn = chip(UIParent, "OPEN", 116, "SecureActionButtonTemplate", "CraftListOpenButton")
+  openBtn:SetFrameStrata("DIALOG")
+  openBtn:RegisterForClicks(down and "AnyDown" or "AnyUp")
+  openBtn:SetAttribute("type", "spell")
+  tip(openBtn, "Open the profession window", "Crafting only works while its window is open. Then a CRAFT button with an amount shows up here.")
+  openBtn:Hide()
+
+  frame:HookScript("OnHide", function()
+    if smeltBtn and not (InCombatLockdown and InCombatLockdown()) then smeltBtn:Hide() end
+    if openBtn and not (InCombatLockdown and InCombatLockdown()) then openBtn:Hide() end
+    if frame.menu then frame.menu:Hide() end
+  end)
+
+  -- LISTS: browse the lists your other characters saved
+  frame.lists = chip(frame, "LISTS", 60)
+  frame.lists:SetPoint("TOPRIGHT", -34, -8)
+  frame.lists:SetHeight(18)
+  frame.lists:SetScript("OnClick", function() toggleMenu() end)
+  tip(frame.lists, "Your characters' lists",
+    "See what another character still needs: what you can send it from here and what to buy for it.",
+    "Lists are saved whenever you play the crafter.")
+
+  frame:SetScript("OnShow", function() refresh() end)
+  frame:Hide()
+end
+
+-- every saved list from your other characters on this realm and faction, newest first
+local function sheetList()
+  local list = {}
+  local realm, faction, me = GetRealmName(), UnitFactionGroup("player"), myKey()
+  for k, g in pairs(CraftListDB.goals or {}) do
+    if g.owner ~= me and g.realm == realm and g.faction == faction and g.rows then g.key = k; list[#list + 1] = g end
+  end
+  table.sort(list, function(a, b) return (a.time or 0) > (b.time or 0) end)
+  return list
+end
+
+toggleMenu = function()
+  local m = frame.menu
+  if not m then
+    local s = scheme()
+    m = CreateFrame("Frame", nil, frame)
+    m:SetFrameLevel(frame:GetFrameLevel() + 30)
+    m:SetPoint("TOPRIGHT", frame.lists, "BOTTOMRIGHT", 0, -2)
+    m:SetWidth(300)
+    local bg = m:CreateTexture(nil, "BACKGROUND"); bg:SetAllPoints()
+    bg:SetColorTexture(s.bg[1], s.bg[2], s.bg[3], 0.98)
+    edges(m, 1, 1, 1, 0.25)
+    m.items = {}
+    m:EnableMouse(true)
+    m:Hide()
+    frame.menu = m
+  end
+  if m:IsShown() then m:Hide(); return end
+  local entries = {}
+  if shownProf() then entries[#entries + 1] = { label = "YOUR OWN LIST", key = false } end
+  for _, g in ipairs(sheetList()) do
+    entries[#entries + 1] = { label = string.format("%s  %s %d>%d  ·  %s", (g.name or "?"):upper(),
+      PROF[g.pid] and PROF[g.pid].short or "?", g.skill or 0, g.target or 0, ago(g.time)), key = g.key }
+  end
+  if #entries == 0 then
+    entries[1] = { label = "NO LISTS SAVED YET", key = false, none = true }
+  end
+  local y = 6
+  for i, e in ipairs(entries) do
+    local c = m.items[i]
+    if not c then
+      c = chip(m, "", 288); c:SetHeight(20)
+      c:SetScript("OnClick", function(self)
+        m:Hide()
+        if self.none then return end
+        viewing = self.key or nil
+        refresh()
+      end)
+      m.items[i] = c
+    end
+    c.key, c.none = e.key, e.none
+    c.text:SetText(e.label)
+    c:SetActive((e.key or nil) == viewing and not e.none)
+    c:ClearAllPoints(); c:SetPoint("TOPLEFT", 6, -y); c:Show()
+    y = y + 24
+  end
+  for i = #entries + 1, #m.items do m.items[i]:Hide() end
+  m:SetHeight(y + 2)
+  m:Show()
+end
+
+-- secure buttons hang off UIParent at the right spot over the window (anchoring them to the
+-- window would lock the window during combat); they're only moved out of combat
+placeSecure = function(btn, x, y)
+  if not btn or (InCombatLockdown and InCombatLockdown()) then return end
+  local l, t = frame:GetLeft(), frame:GetTop()
+  if not l or not t then btn:Hide(); return end
+  -- same scale as the window, so its coordinates line up
+  btn:SetScale(frame:GetScale())
+  btn:ClearAllPoints()
+  btn:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l + x, t - y)
+  btn:Show()
+end
+
+local function hideSecure(btn)
+  if btn and not (InCombatLockdown and InCombatLockdown()) then btn:Hide() end
+end
+
+local function placeSmelt(list, y, buyShown, hide)
+  local total = 0
+  for _, q in ipairs(list or {}) do total = total + q.n end
+  if hide then total = 0 end
+  local right = buyShown and (PAD + 124) or PAD
+  local miningOpen = tsOpen and tsProf == MINING
+  local smeltShown = false
+  if total > 0 and miningOpen then
+    frame.smeltAll.list = list
+    frame.smeltAll.text:SetText("SMELT ALL " .. total)
+    frame.smeltAll:ClearAllPoints(); frame.smeltAll:SetPoint("TOPRIGHT", -right, -y)
+    frame.smeltAll:SetActive(not (job and not job.stopped)); frame.smeltAll:Show()
+    smeltShown = true
+  else
+    frame.smeltAll:Hide()
+  end
+  local wantOpen = total > 0 and not miningOpen and (readSkill(MINING) or 0) > 0
+  if smeltBtn and not (InCombatLockdown and InCombatLockdown()) then
+    if wantOpen then
+      placeSecure(smeltBtn, W - right - 120, y)
+      smeltShown = true
+    else
+      smeltBtn:Hide()
+    end
+  end
+  frame.foot:SetWidth(W - PAD * 2 - (right - PAD) - (smeltShown and 124 or 0) - 4)
+end
+
+---------------------------------------------------------------------------
+-- Own auction house scan: only the items this profession could use in your range
+---------------------------------------------------------------------------
+local SCAN_FRESH = 3600
+local ahOpen = false
+local scan -- { list, i, total, pid, id, name, waiting, sentAt, found, none, tries }
+local scanFrame = CreateFrame("Frame")
+scanFrame:Hide()
+
+local function scanLabel()
+  if not frame or not frame.scanBtn then return end
+  if scan then
+    frame.scanBtn.text:SetText(string.format("STOP %d/%d", math.min(scan.i, scan.total), scan.total))
+    frame.scanBtn:SetActive(true)
+  else
+    frame.scanBtn.text:SetText("SCAN AH")
+    frame.scanBtn:SetActive(false)
+  end
+end
+
+-- materials (and plans, and what bars/bolts are made from) for recipes in from..to
+local function scanList(pid, from, to)
+  local ctx = newCtx(pid, from)
+  local seen, list = {}, {}
+  local function add(id, depth)
+    if not id or id == 0 or seen[id] then return end
+    seen[id] = true
+    if not ns.VENDOR_ITEMS[id] then list[#list + 1] = id end
+    if depth < 2 then
+      for _, r in ipairs(producers(id, pid)) do
+        if canMake(r, ctx) then
+          for _, m in ipairs(r.mats) do add(m[1], depth + 1) end
+        end
+      end
+    end
+  end
+  for _, r in ipairs(recipes(pid).list) do
+    if r.g > from and r.learn < to and (r.creates > 0 or r.prof == 333) then
+      local known = isKnown(r)
+      if known or r.trainer or (r.plans > 0 and CraftListDB.plans) then
+        for _, m in ipairs(r.mats) do add(m[1], 0) end
+        if not known and not r.trainer then add(r.plans, 2) end
+      end
+    end
+  end
+  return list
+end
+
+local function finishScan(stopped)
+  local s = scan
+  scan = nil
+  scanFrame:Hide()
+  scanLabel()
+  if not s then return end
+  Print(string.format("%s %d items: %d listed, %d not on the AH.", stopped and "stopped after" or "scanned",
+    s.found + s.none, s.found, s.none))
+  if s.found + s.none > 0 then
+    -- work the route out again from the new prices
+    local cur = readSkill(s.pid) or 1
+    routeFor(s.pid, cur, targetFor(s.pid, cur), true)
+    pcall(saveGoals)
+  end
+  if refresh then refresh() end
+end
+
+local function readResults()
+  if not scan or not scan.waiting then return end
+  local n = (GetNumAuctionItems and GetNumAuctionItems("list")) or 0
+  local units, qty = {}, 0
+  for i = 1, n do
+    local info = { GetAuctionItemInfo("list", i) }
+    local cnt, buyout, iid = info[3] or 1, info[10] or 0, info[17]
+    if buyout > 0 and cnt > 0 and (iid == scan.id or (iid == nil and info[1] == scan.name)) then
+      units[#units + 1] = { p = buyout / cnt, n = cnt }
+      qty = qty + cnt
+    end
+  end
+  table.sort(units, function(a, b) return a.p < b.p end)
+  local st = scanStore()
+  if #units == 0 then
+    st[scan.id] = { t = time() } -- none listed right now
+    scan.none = scan.none + 1
+  else
+    -- the price you'd pay for the cheapest 15% of what's listed: one odd cheap stack can't skew it
+    local want_, acc, price = math.max(1, math.ceil(qty * 0.15)), 0, units[1].p
+    for _, u in ipairs(units) do
+      acc = acc + u.n; price = u.p
+      if acc >= want_ then break end
+    end
+    st[scan.id] = { p = math.floor(price + 0.5), t = time() }
+    scan.found = scan.found + 1
+  end
+  scan.waiting = false
+  scanLabel()
+end
+
+scanFrame:SetScript("OnUpdate", function(self)
+  if not scan then self:Hide(); return end
+  if not ahOpen then finishScan(true); return end
+  if scan.waiting then
+    if GetTime() - scan.sentAt > 8 then scan.waiting = false end -- no answer: move on
+    return
+  end
+  if not CanSendAuctionQuery then finishScan(true); return end
+  local ok, can = pcall(CanSendAuctionQuery)
+  if not ok or not can then return end
+  scan.i = scan.i + 1
+  local id = scan.list[scan.i]
+  if not id then finishScan(); return end
+  local name = GetItemInfo(id)
+  if not name then
+    -- item not loaded yet: try it again at the end
+    scan.tries[id] = (scan.tries[id] or 0) + 1
+    if scan.tries[id] < 4 then scan.list[#scan.list + 1] = id end
+    return
+  end
+  scan.id, scan.name, scan.waiting, scan.sentAt = id, name, true, GetTime()
+  if SortAuctionClearSort then pcall(SortAuctionClearSort, "list") end
+  if SortAuctionSetSort then pcall(SortAuctionSetSort, "list", "unitprice", false) end
+  local sent = pcall(QueryAuctionItems, name, nil, nil, 0, false, nil, false, true)
+  if not sent then scan.waiting = false end
+  scanLabel()
+end)
+
+startScan = function()
+  if scan then finishScan(true); return end
+  if not ahOpen then Print("open the auction house first, then click SCAN AH."); return end
+  local pid = shownProf()
+  if not pid then return end
+  local cur = readSkill(pid) or 1
+  local target = targetFor(pid, cur)
+  local st = scanStore()
+  local list = {}
+  for _, id in ipairs(scanList(pid, cur, math.max(target, nextMilestone(cur)))) do
+    local e = st[id]
+    if not e or time() - e.t > SCAN_FRESH then list[#list + 1] = id end
+  end
+  if #list == 0 then Print("every price for this range is less than an hour old."); return end
+  for _, id in ipairs(list) do
+    if not GetItemInfo(id) and C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
+  end
+  scan = { list = list, i = 0, total = #list, pid = pid, found = 0, none = 0, tries = {} }
+  Print(string.format("scanning %d items for %s %d-%d.", #list, profName(pid), cur, math.max(target, nextMilestone(cur))))
+  scanLabel()
+  scanFrame:Show()
+end
+
+local function onAuction(event)
+  if event == "AUCTION_HOUSE_SHOW" then ahOpen = true
+  elseif event == "AUCTION_HOUSE_CLOSED" then ahOpen = false
+  elseif event == "AUCTION_ITEM_LIST_UPDATE" and scan and scan.waiting and not scan.reading then
+    scan.reading = true
+    C_Timer.After(0.2, function() if scan then scan.reading = false; readResults() end end)
+  end
+end
+
+-- another character's saved list: what it still needs, what you can send, what to buy
+local function renderSheet(g, warm, green, red, dim)
+  for _, c in ipairs(profChips) do c:Hide() end
+  for _, c in ipairs(frame.ctrl) do c:Hide() end
+  for _, c in ipairs(frame.milestones) do c:Hide() end
+  frame.cast:Hide(); frame.empty:Hide(); frame.more:Hide()
+  frame.title:SetText(string.format("%s: %s %d  >  %d", g.name or "?", profName(g.pid), g.skill or 0, g.target or 0))
+  frame.sub:SetText("saved " .. ago(g.time) .. "  ·  send what you have, buy the rest  ·  LISTS to go back")
+  frame.bar:SetWidth(math.max(1, (frame:GetWidth() - 2) * math.max(0, math.min(1, (g.skill or 0) / 300))))
+
+  local y = 80
+  frame.stepsHead:ClearAllPoints(); frame.stepsHead:SetPoint("TOPLEFT", PAD, -y); frame.stepsHead:Show()
+  y = y + 16
+  local data = recipes(g.pid)
+  for i, l in ipairs(stepLines) do
+    local st = g.steps and g.steps[i]
+    local r = st and st.spell and data.bySpell[st.spell]
+    if st then
+      l:ClearAllPoints(); l:SetPoint("TOPLEFT", PAD, -y); y = y + STEP_H
+      l.st = r and { r = r } or nil
+      l.range:SetText(st.from .. "-" .. st.to)
+      l.name:SetText(r and (colorAt(r, st.from) .. r.name .. "|r") or (red .. "no recipe found|r"))
+      l.crafts:SetText(r and ("x" .. st.crafts) or "")
+      l.info:SetText(""); l.go:Hide(); l.amt:Hide()
+      l:Show()
+    else
+      l.st = nil; l:Hide()
+    end
+  end
+
+  y = y + 10
+  frame.matHead:ClearAllPoints(); frame.matHead:SetPoint("TOPLEFT", PAD, -y); frame.matHead:Show()
+  frame.colNeed:ClearAllPoints(); frame.colNeed:SetPoint("TOPLEFT", PAD + X_NEED, -y); frame.colNeed:Show()
+  frame.colHave:ClearAllPoints(); frame.colHave:SetPoint("TOPLEFT", PAD + X_HAVE, -y); frame.colHave:Show()
+  frame.colStat:ClearAllPoints(); frame.colStat:SetPoint("TOPLEFT", PAD + X_STAT, -y); frame.colStat:Show()
+  frame.colNeed:SetText("NEEDS"); frame.colHave:SetText("YOU HAVE"); frame.colStat:SetText("TO DO")
+  y = y + 18
+
+  g.sent = g.sent or {}
+  local list = {}
+  for _, row in ipairs(g.rows or {}) do
+    local left = (row.missing or 0) - (g.sent[row.id] or 0)
+    local alt = g.alt and g.alt[row.id]
+    if alt then left = left - math.floor((g.sent[alt[1]] or 0) / math.max(alt[2], 0.0001)) end
+    if (row.missing or 0) > 0 then
+      local it = newRow(row.id, math.max(0, left))
+      it.mine = rawCount(row.id, true)
+      it.send = math.max(0, math.min(left, it.mine))
+      it.missing = math.max(0, left - it.send)
+      it.left = left
+      list[#list + 1] = it
+    end
+  end
+  table.sort(list, function(a, b) return (GetItemInfo(a.id) or "") < (GetItemInfo(b.id) or "") end)
+  frame.list = list
+
+  local cost, toBuy, toSend = 0, 0, 0
+  for i, r in ipairs(rows) do
+    local it = list[i]
+    r.act:Hide()
+    if it then
+      r.row = it
+      r:ClearAllPoints(); r:SetPoint("TOPLEFT", PAD, -y); y = y + ROW_H
+      r.icon:SetTexture(GetIcon and GetIcon(it.id) or 134400)
+      r.name:SetText(GetItemInfo(it.id) or ("item " .. it.id))
+      r.need:SetText(tostring(math.max(0, it.left)))
+      r.have:SetText(tostring(it.mine))
+      local parts = {}
+      if it.left <= 0 then parts[1] = green .. "sent|r" end
+      if it.send > 0 then parts[#parts + 1] = warm .. "send " .. it.send .. "|r" end
+      if it.missing > 0 then
+        local p = buyPrice(it.id)
+        parts[#parts + 1] = red .. "buy " .. it.missing .. "|r" .. (p and (dim .. " ~" .. money(p * it.missing) .. "|r") or "")
+      end
+      r.status:SetText(table.concat(parts, "  "))
+      r.name:SetTextColor(1, 1, 1, it.left > 0 and 0.9 or 0.45)
+      r:Show()
+    else
+      r.row = nil; r:Hide()
+    end
+  end
+  for _, it in ipairs(list) do
+    if it.missing > 0 then
+      toBuy = toBuy + 1
+      local p = buyPrice(it.id)
+      if p then cost = cost + p * it.missing end
+    end
+    toSend = toSend + it.send
+  end
+  if #list > #rows then
+    frame.more:SetText(string.format("+ %d more (they're in SEARCH MISSING)", #list - #rows))
+    frame.more:ClearAllPoints(); frame.more:SetPoint("TOPLEFT", PAD + 22, -y - 2); frame.more:Show()
+    y = y + 16
+  end
+  y = y + 8
+  local foot
+  if #list == 0 then foot = green .. (g.name or "They") .. " has everything for this.|r"
+  elseif toBuy == 0 then foot = green .. "You can send all of it.|r"
+  else foot = string.format("Buy here: ~%s", money(cost)) end
+  if toSend > 0 then foot = foot .. "  ·  the mailbox panel sends it in one click" end
+  frame.foot:SetText(foot); frame.foot:Show()
+  frame.foot:ClearAllPoints(); frame.foot:SetPoint("TOPLEFT", PAD, -y - 4)
+  frame.buy:ClearAllPoints(); frame.buy:SetPoint("TOPRIGHT", -PAD, -y)
+  frame.buy:SetShown(toBuy > 0)
+  placeSmelt(nil, y, toBuy > 0, true)
+  hideSecure(openBtn)
+  frame:SetHeight(y + 34)
+end
+
+-- order: things to make first, then missing, then done
+local function sortRows(list)
+  local function rank(r)
+    if r.make then return 0 end
+    if r.missing > 0 then return 1 end
+    return 2
+  end
+  table.sort(list, function(a, b)
+    local ra, rb = rank(a), rank(b)
+    if ra ~= rb then return ra < rb end
+    return (GetItemInfo(a.id) or "") < (GetItemInfo(b.id) or "")
+  end)
+end
+
+refresh = function()
+  if not frame or not frame:IsShown() then return end
+  local s = scheme()
+  local warm = hex(s.warm[1], s.warm[2], s.warm[3])
+  local green, red, dim = "|cff66dd80", "|cffff7366", "|cff808080"
+
+  local skills = readSkills()
+  local pid = shownProf()
+  frame.lists:SetActive(viewing and true or false)
+  -- a character without a crafting profession shows the newest saved list instead
+  if not viewing and not pid then
+    local first = sheetList()[1]
+    if first then viewing = first.key end
+  end
+  if viewing then
+    local g = CraftListDB.goals and CraftListDB.goals[viewing]
+    if g and g.rows then renderSheet(g, warm, green, red, dim); return end
+    viewing = nil
+  end
+  for _, c in ipairs(frame.ctrl) do c:Show() end
+  frame.colNeed:SetText("NEED"); frame.colHave:SetText("HAVE"); frame.colStat:SetText("STILL NEED")
+
+  -- profession chips
+  local x = PAD
+  for _, c in ipairs(profChips) do
+    if skills[c.pid] then
+      c:ClearAllPoints(); c:SetPoint("TOPLEFT", x, -76); x = x + 84
+      c:SetActive(c.pid == pid); c:Show()
+    else
+      c:Hide()
+    end
+  end
+
+  local function hideAll()
+    for _, l in ipairs(stepLines) do l:Hide() end
+    for _, r in ipairs(rows) do r:Hide(); r.row = nil end
+    frame.matHead:Hide(); frame.colNeed:Hide(); frame.colHave:Hide(); frame.colStat:Hide()
+    frame.stepsHead:Hide(); frame.foot:Hide(); frame.buy:Hide(); frame.more:Hide(); frame.cast:Hide()
+    for _, c in ipairs(frame.ctrl) do c:Hide() end
+    for _, c in ipairs(frame.milestones) do c:Hide() end
+    placeSmelt(nil, 0, false, true)
+    hideSecure(openBtn)
+  end
+
+  if not pid then
+    hideAll()
+    frame.title:SetText("No crafting profession found")
+    frame.sub:SetText("")
+    frame.empty:SetText("No crafting profession here, and no saved lists from your other characters yet. Log in on a crafter once and its list is saved for your alts.")
+    frame.empty:ClearAllPoints(); frame.empty:SetPoint("TOPLEFT", PAD, -80); frame.empty:Show()
+    frame:SetHeight(130)
+    return
+  end
+  frame.empty:Hide()
+  frame.stepsHead:Show(); frame.matHead:Show(); frame.colNeed:Show(); frame.colHave:Show(); frame.colStat:Show(); frame.foot:Show()
+
+  local cur = (skills[pid] and skills[pid].rank) or 1
+  local cap = skills[pid] and skills[pid].max
+  local target = targetFor(pid, cur)
+  frame.target = target
+
+  if cur >= 300 then
+    frame.title:SetText(profName(pid) .. " 300. You're done!")
+  else
+    frame.title:SetText(string.format("%s %d  >  %d", profName(pid), cur, target))
+  end
+  frame.bar:SetWidth(math.max(1, (frame:GetWidth() - 2) * math.max(0, math.min(1, cur / 300))))
+
+  if not frame.eb:HasFocus() then frame.eb:SetText(tostring(target)) end
+  for _, c in ipairs(frame.milestones) do c:SetActive(c.value == target); c:SetShown(c.value > cur) end
+  frame.plans:SetActive(CraftListDB.plans and true or false)
+  frame.bank:SetActive(CraftListDB.bank and true or false)
+  frame.alts:SetActive(CraftListDB.alts and true or false)
+  frame.mail:SetActive(CraftListDB.mail and true or false)
+  frame.buffer.text:SetText("SPARE " .. (CraftListDB.buffer or 0) .. "%")
+  frame.buffer:SetActive((CraftListDB.buffer or 0) > 0)
+  scanLabel()
+
+  local route = cur < 300 and routeFor(pid, cur, target) or nil
+  frame.find:SetActive(route and route.dirty or false)
+
+  -- sub line
+  local nAlts = CraftListDB.alts and #alts() or 0
+  local what = "bags"
+  if CraftListDB.bank then what = what .. ", bank" end
+  if CraftListDB.mail then what = what .. ", mail" end
+  local sub = string.format("counting %s%s", what, nAlts > 0 and string.format(" on you + %d alt%s", nAlts, nAlts == 1 and "" or "s") or "")
+  local mining = bestSkill(MINING)
+  if mining > 0 then sub = "Mining " .. mining .. "  ·  " .. sub end
+  if route then sub = "route from " .. ago(route.time) .. (route.dirty and (warm .. " (out of date)|r") or "") .. "  ·  " .. sub end
+  if cap and cap < target and cap < 300 then
+    local rank = (cap < 75 and "Journeyman (level 10)") or (cap < 150 and "Expert (level 20)") or (cap < 225 and "Artisan (level 35)") or "the next rank"
+    sub = sub .. "  ·  " .. warm .. "your cap is " .. cap .. ": train " .. rank .. "|r"
+  end
+  if not seenProf(pid) then sub = sub .. "  ·  " .. warm .. "open your " .. profName(pid) .. " window once|r" end
+  frame.sub:SetText(sub)
+
+  -- steps
+  local steps = route and plan(route, cur, target) or {}
+  local ctx = newCtx(pid, cur)
+  local y = 160
+  if job then
+    frame.cast:ClearAllPoints(); frame.cast:SetPoint("TOPLEFT", PAD, -y); frame.cast:Show()
+    y = y + 26
+  else
+    frame.cast:Hide()
+    y = y + 4
+  end
+  frame.stepsHead:ClearAllPoints(); frame.stepsHead:SetPoint("TOPLEFT", PAD, -y)
+  y = y + 16
+  local vendorBack, matTotal, plansTotal = 0, 0, 0
+  local stepH = STEP_H + 4
+  local openY -- first step that could be crafted once the window is open
+  for i, l in ipairs(stepLines) do
+    local st = steps[i]
+    if st then
+      l.st = st
+      l:ClearAllPoints(); l:SetPoint("TOPLEFT", PAD, -y); y = y + stepH
+      l.range:SetText(st.from .. "-" .. st.to)
+      if st.gap then
+        l.name:SetText(red .. "no recipe found|r")
+        l.crafts:SetText("")
+        l.info:SetText("missing AH prices? scan, then FIND CHEAPEST ROUTE")
+        l.go:Hide(); l.amt:Hide()
+      else
+        local r = st.r
+        l.name:SetText(colorAt(r, st.from) .. r.name .. "|r")
+        l.crafts:SetText("x" .. st.crafts)
+        -- cost per craft from today's prices
+        local mc = 0
+        for _, m in ipairs(r.mats) do mc = mc + (unitCost(m[1], ctx, 0) or 0) * m[2] end
+        local back = r.creates > 0 and (sellPrice(r.creates) or 0) * r.made or 0
+        st.matCost, st.back = mc, back
+        matTotal = matTotal + mc * st.crafts
+        vendorBack = vendorBack + back * st.crafts
+        -- money, not time: what one craft costs after the vendor pays for the result
+        local net = mc - back
+        local info = net >= 0 and ("costs " .. money(net) .. "/craft") or ("+" .. money(-net) .. "/craft profit")
+        if not isKnown(r) then
+          if r.learn > cur then info = info .. "  ·  learn at " .. r.learn
+          elseif r.trainer then info = info .. "  ·  " .. warm .. "trainer|r"
+          elseif r.plans > 0 then
+            info = info .. "  ·  " .. warm .. "buy recipe" .. ((st.plans or 0) > 0 and (" ~" .. money(st.plans)) or "") .. "|r"
+            plansTotal = plansTotal + (st.plans or 0)
+          end
+        end
+        local w = tsOpen and findRecipe(r) or nil
+        if l.key ~= r.spell then l.custom = nil; l.key = r.spell end
+        l.rec, l.label = w, r.name
+        if w then
+          if not l.amt:HasFocus() then
+            local default = st.crafts
+            if (w.avail or 0) > 0 then default = math.min(default, w.avail) end
+            if w.craftIndex then default = 1 end
+            l.amt:SetText(tostring(l.custom or default))
+          end
+          l.go:SetActive((w.avail or 0) > 0 and not (job and not job.stopped))
+          l.go:Show(); l.amt:Show()
+          l.info:SetWidth(W - PAD * 2 - 332 - 116)
+        else
+          l.go:Hide(); l.amt:Hide()
+          l.info:SetWidth(W - PAD * 2 - 332)
+          if not openY and tsProf ~= pid and (isKnown(r) or (r.trainer and r.learn <= cur)) then
+            openY = y - stepH + (stepH - 20) / 2
+            l.info:SetWidth(W - PAD * 2 - 332 - 124)
+          end
+        end
+        l.info:SetText(info)
+      end
+      l:Show()
+    else
+      l.st = nil
+      l:Hide()
+    end
+  end
+
+  if openY and openBtn and not (InCombatLockdown and InCombatLockdown()) then
+    openBtn:SetAttribute("spell", profName(pid))
+    openBtn.text:SetText("OPEN " .. PROF[pid].short)
+    placeSecure(openBtn, W - PAD - 116, openY)
+  elseif not openY then
+    hideSecure(openBtn)
+  end
+
+  -- materials
+  y = y + 10
+  frame.matHead:ClearAllPoints(); frame.matHead:SetPoint("TOPLEFT", PAD, -y)
+  frame.colNeed:ClearAllPoints(); frame.colNeed:SetPoint("TOPLEFT", PAD + X_NEED, -y)
+  frame.colHave:ClearAllPoints(); frame.colHave:SetPoint("TOPLEFT", PAD + X_HAVE, -y)
+  frame.colStat:ClearAllPoints(); frame.colStat:SetPoint("TOPLEFT", PAD + X_STAT, -y)
+  y = y + 18
+
+  local list = (#steps > 0) and materials(steps, ctx) or {}
+  sortRows(list)
+  frame.list = list
+  local cost, missingKinds = 0, 0
+  local toSmelt = {}
+  for _, row in ipairs(list) do
+    if row.make and row.makeRec and row.makeRec.prof == MINING then toSmelt[#toSmelt + 1] = { r = row.makeRec, n = row.make } end
+    if row.missing > 0 then
+      missingKinds = missingKinds + 1
+      local p = buyPrice(row.id)
+      if p then cost = cost + p * row.missing end
+    end
+  end
+  for i, r in ipairs(rows) do
+    local row = list[i]
+    if row then
+      r.row = row
+      r:ClearAllPoints(); r:SetPoint("TOPLEFT", PAD, -y); y = y + ROW_H
+      local name = GetItemInfo(row.id)
+      r.icon:SetTexture(GetIcon and GetIcon(row.id) or 134400)
+      r.name:SetText(name or ("item " .. row.id))
+      r.need:SetText(tostring(row.need))
+      local parts = { tostring(row.own) }
+      if row.mail > 0 then parts[#parts + 1] = row.mail .. " mail" end
+      if row.alts > 0 then parts[#parts + 1] = row.alts .. " alts" end
+      if (row.crafted or 0) > 0 then parts[#parts + 1] = row.crafted .. " crafted" end
+      local smelt = row.makeRec and row.makeRec.prof == MINING
+      if row.src then parts[#parts + 1] = row.srcN .. (smelt and " ore" or " to use") end
+      r.have:SetText(table.concat(parts, " + "))
+      if row.make and row.missing == 0 then
+        r.status:SetText(warm .. (smelt and "smelt " or "make ") .. row.make .. "|r")
+      elseif row.missing > 0 then
+        local p, where = buyPrice(row.id)
+        local tail = p and (dim .. "  ~" .. money(p * row.missing) .. (where == "vendor" and " vendor" or "") .. "|r") or (dim .. "  no price|r")
+        r.status:SetText(red .. row.missing .. "|r" .. (row.make and (warm .. (smelt and " +smelt " or " +make ") .. row.make .. "|r") or "") .. tail)
+      else
+        r.status:SetText(green .. "done|r")
+      end
+      r.name:SetTextColor(1, 1, 1, (row.missing > 0 or row.make) and 0.9 or 0.45)
+      -- MAKE / SMELT right from the list while that profession window is open
+      r.actRec, r.actN, r.actLabel = nil, nil, nil
+      if tsOpen and row.make and row.makeRec and row.makeRec.prof == tsProf then
+        local w = findRecipe(row.makeRec)
+        if w and (w.avail or 0) > 0 then
+          local n = math.min(row.make, w.avail)
+          r.actRec, r.actN, r.actLabel = w, n, row.makeRec.name
+          r.act.text:SetText((row.makeRec.prof == MINING and "SMELT " or "MAKE ") .. n)
+        end
+      end
+      if r.actRec then
+        r.act:SetActive(not (job and not job.stopped)); r.act:Show(); r.status:SetText("")
+      else
+        r.act:Hide()
+      end
+      r:Show()
+    else
+      r.row = nil
+      r:Hide()
+    end
+  end
+  if #list > #rows then
+    frame.more:SetText(string.format("+ %d more (they're in SEARCH MISSING)", #list - #rows))
+    frame.more:ClearAllPoints(); frame.more:SetPoint("TOPLEFT", PAD + 22, -y - 2); frame.more:Show()
+    y = y + 16
+  else
+    frame.more:Hide()
+  end
+
+  y = y + 8
+  local foot
+  if cur >= 300 then
+    foot = "Nothing left to learn here."
+  elseif #steps == 0 then
+    foot = "No route yet: click FIND CHEAPEST ROUTE."
+  elseif missingKinds == 0 then
+    foot = green .. "You have everything up to " .. target .. ".|r"
+  else
+    foot = string.format("Still to buy: ~%s", money(cost))
+  end
+  if matTotal > 0 then
+    foot = foot .. string.format("  ·  route ~%s, vendor back ~%s", money(matTotal + plansTotal), money(vendorBack))
+  end
+  frame.foot:SetText(foot)
+  frame.foot:ClearAllPoints(); frame.foot:SetPoint("TOPLEFT", PAD, -y - 4)
+  frame.buy:ClearAllPoints(); frame.buy:SetPoint("TOPRIGHT", -PAD, -y)
+  frame.buy:SetShown(missingKinds > 0)
+  placeSmelt(toSmelt, y, missingKinds > 0)
+  frame:SetHeight(y + 34)
+end
+
+---------------------------------------------------------------------------
+-- Mailbox panel on your alts: one click mails a crafter what it still needs
+---------------------------------------------------------------------------
+local MP_W, MP_PAD, MP_ROW, MP_ROWS = 230, 10, 20, 12
+local MAX_ATTACH = ATTACHMENTS_MAX_SEND or 12
+local mp, mpRows, mpChips, busy = nil, {}, {}, false
+local mpPick
+
+local function bagStacks(id)
+  local out = {}
+  for bag = 0, (NUM_BAG_SLOTS or 4) do
+    for slot = 1, numSlots(bag) do
+      local iid, cnt, locked = slotInfo(bag, slot)
+      if iid == id and not locked then out[#out + 1] = { bag = bag, slot = slot, count = cnt or 1 } end
+    end
+  end
+  table.sort(out, function(a, b) return a.count > b.count end)
+  return out
+end
+
+local function bagCount(id)
+  local n = 0
+  for _, st in ipairs(bagStacks(id)) do n = n + st.count end
+  return n
+end
+
+-- goals of your other characters on this realm and faction, newest first
+local function otherGoals()
+  local list = {}
+  local realm, faction, me = GetRealmName(), UnitFactionGroup("player"), myKey()
+  for k, g in pairs(CraftListDB.goals or {}) do
+    if g.owner ~= me and g.realm == realm and g.faction == faction and next(g.needs or {}) then g.key = k; list[#list + 1] = g end
+  end
+  table.sort(list, function(a, b) return (a.time or 0) > (b.time or 0) end)
+  return list
+end
+
+local function sendPlan(g)
+  local items = {}
+  g.sent = g.sent or {}
+  for id, n in pairs(g.needs or {}) do
+    local alt = g.alt and g.alt[id]
+    local left = n - (g.sent[id] or 0)
+    if alt then left = left - math.floor((g.sent[alt[1]] or 0) / math.max(alt[2], 0.0001)) end
+    if left > 0 then
+      local give = math.min(left, bagCount(id))
+      local bankMore = math.max(0, math.min(left - give, rawCount(id, true) - rawCount(id, false)))
+      if give > 0 or bankMore > 0 then items[#items + 1] = { id = id, n = give, bank = bankMore } end
+      left = left - give
+      if left > 0 and alt then
+        local want_ = math.ceil(left * alt[2])
+        local o = math.min(want_, bagCount(alt[1]))
+        if o > 0 then items[#items + 1] = { id = alt[1], n = o, bank = 0, raw = true } end
+      end
+    end
+  end
+  table.sort(items, function(a, b) return (GetItemInfo(a.id) or "") < (GetItemInfo(b.id) or "") end)
+  return items
+end
+
+local function attachQueue(items)
+  local q = {}
+  for _, it in ipairs(items) do
+    local left = it.n
+    for _, st in ipairs(bagStacks(it.id)) do
+      if left <= 0 then break end
+      local take = math.min(left, st.count)
+      q[#q + 1] = { bag = st.bag, slot = st.slot, count = take, whole = (take == st.count) }
+      left = left - take
+    end
+  end
+  return q
+end
+
+local function findToBox()
+  if GoldSense and GoldSense.FindMailToBox then
+    local ok, box = pcall(GoldSense.FindMailToBox)
+    if ok and box then return box end
+  end
+  if _G.SendMailNameEditBox then return _G.SendMailNameEditBox end
+  local root = _G.SendMailFrame
+  if not root then return nil end
+  local first
+  local function walk(f, depth)
+    if depth > 5 then return nil end
+    for _, c in ipairs({ f:GetChildren() }) do
+      if c.GetObjectType and c:GetObjectType() == "EditBox" then
+        local n = ((c.GetName and c:GetName()) or ""):lower()
+        if n:find("name") or n:find("recipient") then return c end
+        first = first or c
+      end
+      local hit = walk(c, depth + 1)
+      if hit then return hit end
+    end
+  end
+  return walk(root, 0) or first
+end
+
+local mpRefresh
+
+local function chosenGoal()
+  local list = otherGoals()
+  for _, g in ipairs(list) do if g.key == mpPick then return g, list end end
+  return list[1], list
+end
+
+local function sendNow()
+  if busy then return end
+  local g = chosenGoal()
+  if not g then return end
+  if InCombatLockdown and InCombatLockdown() then Print("can't send mail in combat."); return end
+  local queue = attachQueue(sendPlan(g))
+  if #queue == 0 then return end
+  if _G.SendMailFrame and not _G.SendMailFrame:IsShown() then
+    if _G.MailFrameTab2 and _G.MailFrameTab2.Click then _G.MailFrameTab2:Click()
+    elseif MailFrameTab_OnClick then pcall(MailFrameTab_OnClick, nil, 2) end
+  end
+  if GetSendMailItem then
+    for i = 1, MAX_ATTACH do
+      if GetSendMailItem(i) then Print("take the items off the mail you're writing first."); return end
+    end
+  end
+  busy = true
+  mp.send.text:SetText("ATTACHING...")
+  local pickup = (C_Container and C_Container.PickupContainerItem) or PickupContainerItem
+  local split = (C_Container and C_Container.SplitContainerItem) or SplitContainerItem
+  local subject = "CraftList: " .. profName(g.pid)
+  local i = 0
+  local function finish()
+    local box = findToBox()
+    if box and box.SetText then box:SetText(g.full or g.name) end
+    local subj = _G.SendMailSubjectEditBox
+    if subj and subj.SetText then subj:SetText(subject) end
+    local ok = pcall(SendMail, g.full or g.name, subject, "")
+    if not ok then Print("everything is attached. Click Send to finish.") end
+    C_Timer.After(1, function() busy = false; if mpRefresh then mpRefresh() end end)
+  end
+  local function step()
+    i = i + 1
+    local q = queue[i]
+    if not q or i > MAX_ATTACH then finish(); return end
+    ClearCursor()
+    if q.whole then pickup(q.bag, q.slot) else split(q.bag, q.slot, q.count) end
+    ClickSendMailItemButton(i)
+    if CursorHasItem and CursorHasItem() then ClearCursor() end
+    C_Timer.After(0.15, step)
+  end
+  step()
+end
+
+local function mpMakeRow()
+  local r = CreateFrame("Frame", nil, mp)
+  r:SetSize(MP_W - MP_PAD * 2, MP_ROW)
+  r.icon = r:CreateTexture(nil, "ARTWORK"); r.icon:SetSize(16, 16); r.icon:SetPoint("LEFT", 0, 0)
+  r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  r.name = text(r, 12, 1, 1, 1, 0.9); r.name:SetPoint("LEFT", 22, 0); r.name:SetWidth(130)
+  r.count = text(r, 12, 1, 1, 1, 0.9); r.count:SetPoint("RIGHT", 0, 0); r.count:SetWidth(60); r.count:SetJustifyH("RIGHT")
+  return r
+end
+
+local function mpBuild()
+  local anchor = _G.MailFrame
+  if not anchor then return end
+  local ar, ag, ab = accent()
+  local s = scheme()
+  mp = CreateFrame("Frame", "CraftListMailPanel", anchor)
+  mp:SetSize(MP_W, 120)
+  mp:SetFrameStrata(anchor:GetFrameStrata())
+  local bg = mp:CreateTexture(nil, "BACKGROUND"); bg:SetAllPoints()
+  bg:SetColorTexture(s.bg[1], s.bg[2], s.bg[3], 0.94)
+  edges(mp, 1, 1, 1, 0.15)
+  local top = mp:CreateTexture(nil, "ARTWORK"); top:SetColorTexture(ar, ag, ab, 0.95)
+  top:SetPoint("TOPLEFT", 1, -1); top:SetPoint("TOPRIGHT", -1, -1); top:SetHeight(2)
+  local head = text(mp, 11, ar, ag, ab, 0.9); head:SetPoint("TOPLEFT", MP_PAD, -11); head:SetText("CRAFTLIST")
+  for i = 1, 4 do
+    local c = chip(mp, "", MP_W - MP_PAD * 2)
+    c:SetHeight(18)
+    c:SetScript("OnClick", function(self) mpPick = self.key; mpRefresh() end)
+    mpChips[i] = c
+  end
+  mp.title = text(mp, 12, 1, 1, 1, 0.95); mp.title:SetWidth(MP_W - MP_PAD * 2)
+  mp.sub = text(mp, 11, 1, 1, 1, 0.5); mp.sub:SetWidth(MP_W - MP_PAD * 2)
+  for i = 1, MP_ROWS do mpRows[i] = mpMakeRow() end
+  mp.note = text(mp, 11, s.warm[1], s.warm[2], s.warm[3], 0.85); mp.note:SetWidth(MP_W - MP_PAD * 2)
+  mp.note:SetWordWrap(true)
+  mp.send = chip(mp, "SEND", MP_W - MP_PAD * 2)
+  mp.send:SetScript("OnClick", sendNow)
+  mp:SetScript("OnShow", function() if mpRefresh then mpRefresh() end end)
+  mp:Hide()
+end
+
+local function mpPlace()
+  local anchor = _G.MailFrame
+  mp:ClearAllPoints()
+  local sl = _G.SmithListMailPanel
+  if sl and sl:IsShown() then
+    mp:SetPoint("TOPLEFT", sl, "BOTTOMLEFT", 0, -6)
+  else
+    local x = _G.GoldSenseMailAlts and (6 + (_G.GoldSenseMailAlts:GetWidth() or 180) + 6) or 6
+    mp:SetPoint("TOPLEFT", anchor, "TOPRIGHT", x, 0)
+  end
+end
+
+mpRefresh = function()
+  if not mp then mpBuild() end
+  if not mp then return end
+  local g, list = chosenGoal()
+  if not g or not (_G.MailFrame and _G.MailFrame:IsShown()) then mp:Hide(); return end
+  mpPlace()
+  mp:Show()
+  local y = 28
+  -- one chip per crafter goal when there's more than one
+  for i, c in ipairs(mpChips) do
+    local gi = list[i]
+    if gi and #list > 1 then
+      c.key = gi.key
+      c.text:SetText(string.format("%s  %s", (gi.name or "?"):upper(), PROF[gi.pid] and PROF[gi.pid].short or ""))
+      c:SetActive(gi == g)
+      c:ClearAllPoints(); c:SetPoint("TOPLEFT", MP_PAD, -y); c:Show()
+      y = y + 22
+    else
+      c:Hide()
+    end
+  end
+  if #list > 1 then y = y + 4 end
+  mp.title:ClearAllPoints(); mp.title:SetPoint("TOPLEFT", MP_PAD, -y)
+  mp.title:SetText(string.format("For %s, %s %d", g.name or "?", profName(g.pid), g.target or 0))
+  y = y + 16
+  mp.sub:ClearAllPoints(); mp.sub:SetPoint("TOPLEFT", MP_PAD, -y)
+  mp.sub:SetText("list from " .. ago(g.time))
+  y = y + 18
+  local items = sendPlan(g)
+  local count_, bankMore = 0, 0
+  for i, r in ipairs(mpRows) do
+    local it = items[i]
+    if it and it.n > 0 then
+      r:ClearAllPoints(); r:SetPoint("TOPLEFT", MP_PAD, -y); y = y + MP_ROW
+      r.icon:SetTexture(GetIcon and GetIcon(it.id) or 134400)
+      r.name:SetText(GetItemInfo(it.id) or ("item " .. it.id))
+      r.count:SetText("x" .. it.n)
+      r:Show()
+      count_ = count_ + it.n
+    else
+      r:Hide()
+    end
+    if it then bankMore = bankMore + (it.bank or 0) end
+  end
+  local queue = attachQueue(items)
+  local mails = math.ceil(#queue / MAX_ATTACH)
+  local note = ""
+  if #queue == 0 then
+    note = "Nothing " .. (g.name or "they") .. " needs is in your bags."
+  end
+  if bankMore > 0 then note = note .. (note ~= "" and " " or "") .. bankMore .. " more is in your bank: take it out and it shows up here." end
+  mp.note:SetText(note)
+  y = y + 6
+  if note ~= "" then
+    mp.note:ClearAllPoints(); mp.note:SetPoint("TOPLEFT", MP_PAD, -y); mp.note:Show()
+    y = y + (mp.note:GetStringHeight() or 14) + 8
+  else
+    mp.note:Hide()
+  end
+  if #queue > 0 then
+    mp.send:ClearAllPoints(); mp.send:SetPoint("TOPLEFT", MP_PAD, -y)
+    if not busy then
+      mp.send.text:SetText(mails > 1 and string.format("SEND MAIL 1 OF %d", mails) or string.format("SEND %d ITEMS", count_))
+    end
+    mp.send:SetActive(true); mp.send:Show()
+    y = y + 28
+  else
+    mp.send:Hide()
+  end
+  mp:SetHeight(y + 6)
+end
+
+---------------------------------------------------------------------------
+-- Events and slash command
+---------------------------------------------------------------------------
+local pending = false
+local function soon()
+  if pending or not (frame and frame:IsShown()) then return end
+  pending = true
+  C_Timer.After(0.2, function() pending = false; refresh() end)
+end
+
+local function onWindowOpen(mode)
+  tsOpen, tsMode, recipeCache = true, mode, nil
+  C_Timer.After(0.3, function()
+    if not tsOpen then return end
+    tsProf = windowProf()
+    if not tsProf then return end
+    pcall(learnWindow)
+    if PROF[tsProf] and not PROF[tsProf].gather then
+      local rank = readSkill(tsProf)
+      if rank and rank < 300 and frame then
+        current = tsProf
+        if CraftListDB.auto ~= false and not frame:IsShown() then frame:Show() end
+      end
+    end
+    soon()
+  end)
+end
+
+local ev = CreateFrame("Frame")
+ev:RegisterEvent("ADDON_LOADED")
+ev:RegisterEvent("PLAYER_LOGIN")
+local inited = false
+ev:SetScript("OnEvent", function(self, event, arg1)
+  -- Start once CraftList_Data has loaded (it loads right after CraftList); at login at the latest, so
+  -- CraftList still opens when the data folder is missing or turned off.
+  if not inited and ((event == "ADDON_LOADED" and arg1 == DATA_ADDON) or event == "PLAYER_LOGIN") then
+    inited = true
+    if not next(ns.RECIPES) then
+      print("|cffff8800CraftList:|r the CraftList_Data folder is missing or turned off, so there are no recipes. "
+        .. "Install both folders from the download and turn CraftList_Data on in the AddOns list.")
+    end
+    buildWant()
+    CraftListDB = CraftListDB or {}
+    for k, v in pairs(DEFAULTS) do if CraftListDB[k] == nil then CraftListDB[k] = v end end
+    CraftListDB.chars = CraftListDB.chars or {}
+    pcall(importOthers)
+    build()
+    for _, e in ipairs({ "BAG_UPDATE_DELAYED", "SKILL_LINES_CHANGED", "CHAT_MSG_SKILL", "GET_ITEM_INFO_RECEIVED",
+      "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYERBANKSLOTS_CHANGED", "PLAYER_LOGIN", "PLAYER_LOGOUT",
+      "MAIL_SHOW", "MAIL_CLOSED", "MAIL_INBOX_UPDATE", "MAIL_SEND_SUCCESS", "MAIL_FAILED", "MERCHANT_SHOW",
+      "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE",
+      "CRAFT_SHOW", "CRAFT_CLOSE", "CRAFT_UPDATE", "PLAYER_REGEN_ENABLED",
+      "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "AUCTION_ITEM_LIST_UPDATE",
+      "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_FAILED" }) do
+      pcall(self.RegisterEvent, self, e)
+    end
+    if SendMail then pcall(hooksecurefunc, "SendMail", function(recipient) pcall(noteOutgoing, recipient) end) end
+    self:UnregisterEvent("ADDON_LOADED")
+    if event ~= "PLAYER_LOGIN" then return end
+  end
+  if event == "ADDON_LOADED" or not inited then return end
+  if event:sub(1, 15) == "UNIT_SPELLCAST_" then
+    onCast(event, arg1)
+    if frame and frame:IsShown() and event ~= "UNIT_SPELLCAST_START" then soon() end
+    return
+  end
+  if event == "TRADE_SKILL_SHOW" then onWindowOpen("trade"); return end
+  if event == "CRAFT_SHOW" then onWindowOpen("craft"); return end
+  if event == "TRADE_SKILL_CLOSE" or event == "CRAFT_CLOSE" then
+    if (event == "CRAFT_CLOSE") == (tsMode == "craft") then tsOpen, tsProf, tsMode, recipeCache = false, nil, nil, nil end
+    soon(); return
+  end
+  if event == "TRADE_SKILL_UPDATE" or event == "TRADE_SKILL_LIST_UPDATE" or event == "CRAFT_UPDATE" then
+    recipeCache = nil
+    if not self.learnPending then
+      self.learnPending = true
+      C_Timer.After(0.5, function() self.learnPending = false; pcall(learnWindow) end)
+    end
+    soon(); return
+  end
+  if event:sub(1, 8) == "AUCTION_" then
+    onAuction(event)
+    if event ~= "AUCTION_ITEM_LIST_UPDATE" then soon() end
+    return
+  end
+  if event == "PLAYER_REGEN_ENABLED" then
+    if smeltBtn and not (frame and frame:IsShown()) then smeltBtn:Hide() end
+    soon(); return
+  end
+  if event == "MERCHANT_SHOW" then C_Timer.After(0.3, function() pcall(readMerchant) end); return end
+  if event == "GET_ITEM_INFO_RECEIVED" then soon(); return end
+  if event == "BAG_UPDATE_DELAYED" then recipeCache = nil end
+  if event == "MAIL_SHOW" then mailShown = true end
+  if event == "MAIL_INBOX_UPDATE" and mailShown then mailOpen = true end
+  if event == "MAIL_CLOSED" then
+    mailOpen, mailShown = false, false
+  end
+  if event == "BANKFRAME_OPENED" then bankOpen = true end
+  if event == "BANKFRAME_CLOSED" then
+    bankOpen = false
+  end
+  if event == "MAIL_SEND_SUCCESS" then deliverOutgoing() end
+  if event == "MAIL_FAILED" then outgoing = nil end
+  if event == "MAIL_SHOW" or (mp and mp:IsShown()) then C_Timer.After(0.25, mpRefresh) end
+  if event == "PLAYER_LOGIN" then pcall(importOthers); C_Timer.After(5, snapshot); return end
+  if event == "PLAYER_LOGOUT" then mailOpen, bankOpen = false, false; pcall(snapshot); return end
+  if event ~= "CHAT_MSG_SKILL" then
+    if not self.snapPending then
+      self.snapPending = true
+      C_Timer.After(1, function() self.snapPending = false; pcall(snapshot) end)
+    end
+  end
+  soon()
+end)
+
+local function profFromArg(a)
+  a = (a or ""):lower()
+  if a == "" then return nil end
+  for _, p in ipairs(PROFS) do
+    if p.short:lower():find(a, 1, true) == 1 then return p.id end
+    for _, n in ipairs(p.names) do if n:lower():find(a, 1, true) == 1 then return p.id end end
+  end
+end
+
+SLASH_CRAFTLIST1 = "/craftlist"
+SLASH_CRAFTLIST2 = "/cl"
+SlashCmdList.CRAFTLIST = function(msg)
+  msg = strtrim((msg or ""):lower())
+  local n = tonumber(msg)
+  if n then frame:Show(); setTarget(n); return end
+  if msg == "reset" then
+    CraftListDB.pos = nil
+    frame:ClearAllPoints(); frame:SetPoint("CENTER", -200, 40)
+    frame:Show(); return
+  end
+  if msg == "auto" then
+    CraftListDB.auto = (CraftListDB.auto == false)
+    Print("open with your profession windows: " .. (CraftListDB.auto and "on" or "off"))
+    return
+  end
+  if msg == "alts" then
+    local list = alts()
+    if #list == 0 then Print("no alts saved yet. Log in on them once (and open their bank).") end
+    for _, c in ipairs(list) do Print(string.format("%s, saved %s", c.name or "?", ago(c.time))) end
+    return
+  end
+  if msg == "vendors" then
+    local k = 0
+    for _ in pairs(CraftListDB.vendor or {}) do k = k + 1 end
+    Print(k .. " vendor prices seen so far.")
+    return
+  end
+  if msg == "debug" then
+    Print(string.format("window open: %s, mode: %s, profession: %s", tostring(tsOpen), tostring(tsMode), tostring(tsProf and profName(tsProf))))
+    local rc = getRecipes()
+    if rc then
+      Print(#rc.all .. " recipes in the window:")
+      for i, w in ipairs(rc.all) do
+        if i > 12 then break end
+        local id
+        for iid, ww in pairs(rc.byItem) do if ww == w then id = iid end end
+        Print(string.format("  %s  item %s  can make %s  %s", w.name, tostring(id), tostring(w.avail), w.index and ("index " .. w.index) or (w.recipeID and ("recipe " .. w.recipeID) or "")))
+      end
+    end
+    for _, q in ipairs((frame and frame.smeltAll and frame.smeltAll.list) or {}) do
+      local w = findRecipe(q.r)
+      Print(string.format("to smelt: %s x%d, found in window: %s", q.r.name, q.n, w and ("yes, can make " .. tostring(w.avail)) or "no"))
+    end
+    return
+  end
+  if msg == "colors" then
+    local k = 0
+    for _ in pairs(CraftListDB.fix or {}) do k = k + 1 end
+    Print(k .. " recipe colors corrected from your profession windows.")
+    return
+  end
+  local who = msg:match("^forget%s+(.+)$")
+  if who then
+    local gone
+    for k, c in pairs(CraftListDB.chars or {}) do
+      if (c.name or ""):lower() == who then
+        CraftListDB.chars[k] = nil; gone = c.name
+        for gk, g in pairs(CraftListDB.goals or {}) do if g.owner == k then CraftListDB.goals[gk] = nil end end
+      end
+    end
+    Print(gone and ("forgot " .. gone .. ".") or ("no saved character called " .. who .. "."))
+    refresh(); return
+  end
+  if msg == "help" then
+    Print("/cl  open or close the list")
+    Print("/cl tailoring  show a profession (or alch, smith, leather, eng, ench, cook, first, poisons)")
+    Print("/cl 225  check materials up to skill 225")
+    Print("/cl alts  list the alts it's counting")
+    Print("/cl auto  open (or not) with your profession windows")
+    Print("/cl forget Name  stop counting a character")
+    Print("/cl reset  move the window back to the middle")
+    return
+  end
+  local pid = profFromArg(msg)
+  if pid then
+    if not readSkill(pid) then Print("this character doesn't have " .. profName(pid) .. "."); return end
+    pick(pid); frame:Show(); return
+  end
+  frame:SetShown(not frame:IsShown())
+end

@@ -1,0 +1,15 @@
+package-as: CraftList
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+# CraftList_Data (GPL v2, its own add-on) comes in the same zip, as a folder of its own next to CraftList
+move-folders:
+  CraftList/CraftList_Data: CraftList_Data
+
+ignore:
+  - tools
+  - README.md
+  - CURSEFORGE.md
+  - .gitignore

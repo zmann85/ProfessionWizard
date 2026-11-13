@@ -1,0 +1,9 @@
+*.zip
+.release/
+# generator inputs and caches
+tools/recipes.json
+tools/src/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db

@@ -1,0 +1,18 @@
+local _, ns = ...
+
+-- Reagents sold by trade supply vendors. Until you've seen one at a vendor, its price is
+-- taken as 4x what the vendor pays for it (how Classic vendor prices work for these).
+-- Every vendor you open is read too, so this list fills in by itself (/cl vendors).
+ns.VENDOR_ITEMS = {}
+for _, id in ipairs({
+  2320, 2321, 4291, 8343, 14341,             -- threads
+  2880, 3466, 18567,                         -- flux
+  3371, 3372, 8925, 18256,                   -- vials
+  2678, 2692, 3713, 159, 1179, 2596, 4536,   -- cooking
+  17194, 17196,                              -- holiday spices and spirits
+  4289,                                      -- salt
+  2324, 2604, 6260, 2605, 4340, 6261, 2325, 4342, 10290, -- bleach and dyes
+  6217, 4470, 4399, 4400, 11291,             -- rods and wood
+  10647, 10648,                              -- engineer's ink, blank parchment
+  2930, 5173, 8923, 8924, 2931,              -- poison reagents
+}) do ns.VENDOR_ITEMS[id] = true end

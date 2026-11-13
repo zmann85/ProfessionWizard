@@ -1,0 +1,12 @@
+## Interface: 16001
+## Title: CraftList
+## Notes: Cheapest skilling route for every crafting profession from your AH prices, with a material checklist across your alts, bank and mail.
+## Author: Ghaan
+## Version: @project-version@
+## IconTexture: Interface\Icons\Trade_BlackSmithing
+## X-License: All Rights Reserved
+## OptionalDeps: Auctionator, GoldSense, Itinerary, EllesmereUI
+## SavedVariables: CraftListDB
+
+Vendor.lua
+CraftList.lua

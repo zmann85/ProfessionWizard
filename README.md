@@ -1,0 +1,44 @@
+<h1 align="center">CraftList</h1>
+<p align="center"><b>The cheapest way to level every crafting profession, from your own auction house prices, with a shopping list that counts your bags, bank, mail and alts.</b><br>
+A WoW Forever addon.</p>
+
+<p align="center"><a href="https://github.com/zmann85/CraftList/releases/latest"><b>⬇️ Download the latest version</b></a> &nbsp;·&nbsp; <a href="CHANGELOG.md">What's new</a></p>
+
+## Install
+1. Open the [latest release](https://github.com/zmann85/CraftList/releases/latest) and download the `CraftList-…zip` file under **Assets**.
+2. Unzip it into `World of Warcraft\_forever_\Interface\AddOns\`. You get two folders: **CraftList** and **CraftList_Data** (the recipe data). Keep both.
+3. Start the game or type `/reload`.
+
+To update, repeat this and replace both folders. Your settings, prices and alts are kept.
+
+## What it does
+For every crafting profession CraftList works out which recipe to craft at each skill point so that
+levelling costs as little as possible. It weighs what the materials cost at the auction house (or a vendor),
+how likely a skill-up is at that colour, what the result sells to a vendor for, and whether making a reagent
+yourself (smelting the bars, say) is cheaper than buying it.
+
+The route comes with a material checklist: how much of each reagent you need, how much you already have in
+your bags, bank, mailbox and on your alts, and what's left to buy. Alts can see what a crafter is missing and
+send it with one click at the mailbox.
+
+## Use
+1. Open each profession window once, so CraftList knows which recipes you have.
+2. Log in on your alts once and open their bank and mailbox, so their items are counted.
+3. At the auction house, click **SCAN AH** in the CraftList window (or scan with Auctionator).
+4. `/cl` opens the list for your profession. Craft down the route.
+
+## Commands
+| Command | |
+|---|---|
+| `/cl` | open or close the list |
+| `/cl tailoring` | show another profession (or `alch`, `smith`, `leather`, `eng`, `ench`, `cook`, `first`, `poisons`) |
+| `/cl 225` | check materials up to skill 225 |
+| `/cl alts` / `forget Name` | the alts it's counting / stop counting one |
+| `/cl auto` | open (or not) with your profession windows |
+| `/cl reset` | move the window back to the middle |
+| `/cl debug` | what CraftList sees in the open profession window (paste this in a bug report) |
+| `/cl help` | all commands |
+
+## License
+CraftList is all rights reserved (see [LICENSE.txt](LICENSE.txt)). The recipe data in `CraftList_Data` is a
+separate add-on under the GNU GPL v2 (see [CraftList_Data/LICENSE.txt](CraftList_Data/LICENSE.txt)).
