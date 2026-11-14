@@ -1226,12 +1226,25 @@ function Ench.onReplace()
   end
 end
 
+-- is a batch still running? One the game ended without telling us (out of materials, stopped in the
+-- profession window, disconnected ...) is over once nothing has been cast for a few seconds.
+local function jobBusy()
+  if not job or job.stopped then return false end
+  local now = GetTime()
+  local overdue = job.casting and job.et and now * 1000 > job.et + 2000
+  if (job.casting and not overdue) or now - (job.last or 0) < 3 then return true end
+  job.stopped = job.done > 0 and ("stopped after " .. job.done) or "stopped"
+  queue = {}
+  clearJob(3)
+  return false
+end
+
 local function startCraft(w, n, label, r)
   if not w or not n or n < 1 then return end
   local ench = Ench.slotOf(r)
   if ench then n = 1 end
   if InCombatLockdown and InCombatLockdown() then Print("can't craft in combat."); return end
-  if job and not job.stopped then Print("already crafting. Wait for it to finish, or move to stop it."); return end
+  if jobBusy() then Print("already crafting. Wait for it to finish, or move to stop it."); return end
   local ok, err
   if w.craftIndex and DoCraft then
     n = 1 -- enchants go on one item at a time
@@ -1246,7 +1259,7 @@ local function startCraft(w, n, label, r)
     ok, err = false, "no way to start crafting found"
   end
   if not ok then Print("couldn't start crafting: " .. tostring(err)); return end
-  job = { name = w.name, label = label or w.name, total = n, done = 0 }
+  job = { name = w.name, label = label or w.name, total = n, done = 0, last = GetTime() }
   local this = job
   if ench or w.craftIndex then Ench.apply(r) end
   -- not started after 2.5s: it didn't work. Still choosing the item for an enchant counts as waiting (up to a minute).
@@ -1286,15 +1299,25 @@ local function onCast(event, unit)
   if event == "UNIT_SPELLCAST_START" then
     local name, _, _, st, et = UnitCastingInfo("player")
     if name and (name == job.name or not job.st) then
-      job.st, job.et, job.casting = st, et, true
+      job.st, job.et, job.casting, job.last = st, et, true, GetTime()
     end
   elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
     if job.casting then
       job.casting = false
       job.done = job.done + 1
+      job.last = GetTime()
       if job.done >= job.total then
         job.stopped = "done"; clearJob(3)
         if queue[1] then C_Timer.After(0.8, function() recipeCache = nil; nextInQueue() end) end
+      else
+        -- the next craft of the batch starts right away; if none does, the game ended the batch
+        local this, d = job, job.done
+        C_Timer.After(2.5, function()
+          if job == this and not job.casting and job.done == d and not job.stopped then
+            job.stopped = (d > 0 and ("stopped after " .. d)) or "stopped"
+            queue = {}; clearJob(3); if refresh then refresh() end
+          end
+        end)
       end
     end
   elseif event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" then
@@ -1868,7 +1891,7 @@ local function build()
   -- SMELT ALL: every bar on the list, one after another (needs the smelting window open)
   frame.smeltAll = chip(frame, "SMELT ALL", 120)
   frame.smeltAll:SetScript("OnClick", function(self)
-    if job and not job.stopped then Print("already crafting."); return end
+    if jobBusy() then Print("already crafting."); return end
     queue = {}
     for _, q in ipairs(self.list or {}) do queue[#queue + 1] = { r = q.r, n = q.n } end
     if #queue == 0 then Print("nothing to smelt.") end
@@ -2578,6 +2601,7 @@ refresh = function()
   local steps = route and plan(route, cur, target) or {}
   local ctx = newCtx(pid, cur)
   local y = 160
+  if job then jobBusy() end -- a batch the game ended quietly stops showing as running
   if job then
     frame.cast:ClearAllPoints(); frame.cast:SetPoint("TOPLEFT", PAD, -y); frame.cast:Show()
     y = y + 26

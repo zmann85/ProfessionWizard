@@ -8,6 +8,9 @@
   more than 12 stacks, fill and send again.
 
 ### Fixed
+- A batch the game ended without saying so (out of materials, stopped in the profession window, after a
+  disconnect) stayed "running": the bar stuck at e.g. 78 / 104 and every CRAFT or SMELT answered "already
+  crafting". Casting nothing for a few seconds now ends it ("stopped after 78").
 - What you buy out at the auction house counts straight away, as on the way to you, not only once you've
   taken it out of the mailbox. A crafter's list viewed on an alt (LISTS) counts that alt's mail too, says how much
   of "send" is still in the mail, and counts its finished bars for the ore the crafter would smelt.
