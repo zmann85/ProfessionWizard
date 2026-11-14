@@ -1485,11 +1485,29 @@ local function makeStep(i)
     elseif r.trainer then GameTooltip:AddLine("From your trainer.", 0.8, 0.8, 0.8)
     elseif r.plans > 0 then
       local _, link = GetItemInfo(r.plans)
-      GameTooltip:AddLine("Needs " .. (link or "a recipe item") .. (st.plans and st.plans > 0 and (" (~" .. money(st.plans) .. (st.where == "vendor" and " at a vendor)" or " on the AH)")) or ""), 1, 0.82, 0.45, true)
+      GameTooltip:AddLine("Needs " .. (link or "a recipe item") .. ", not taught by trainers.", 1, 0.82, 0.45, true)
+      local rp, where = buyPrice(r.plans)
+      if rp then
+        GameTooltip:AddDoubleLine(where == "vendor" and "Recipe at a vendor" or "Recipe on the AH", money(rp), 0.8, 0.8, 0.8, 1, 1, 1)
+      else
+        GameTooltip:AddLine("No price for the recipe yet: SCAN AH looks it up too.", 0.8, 0.8, 0.8, true)
+      end
+      if (st.plans or 0) > 0 then
+        GameTooltip:AddDoubleLine("Counted in this part of the route", money(st.plans), 0.6, 0.6, 0.6, 0.8, 0.8, 0.8)
+      end
+      if r.learn > (st.from or 0) then GameTooltip:AddLine("You can learn it at " .. r.learn .. ".", 0.8, 0.8, 0.8) end
+      GameTooltip:AddLine("Click to search the auction house for the recipe, shift-click to link it.", 1, 1, 1, true)
     end
     GameTooltip:Show()
   end)
   l:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  l:SetScript("OnMouseUp", function(self)
+    local r = self.st and self.st.r
+    if not r or isKnown(r) or r.trainer or (r.plans or 0) == 0 then return end
+    local name, link = GetItemInfo(r.plans)
+    if IsShiftKeyDown() and link then insertLink(link); return end
+    if name then searchAH({ name }) end
+  end)
   l.go:Hide(); l.amt:Hide()
   return l
 end
@@ -2583,12 +2601,19 @@ refresh = function()
         local net = mc - back
         local info = net >= 0 and ("costs " .. money(net) .. "/craft") or ("+" .. money(-net) .. "/craft profit")
         if not isKnown(r) then
-          if r.learn > cur then info = info .. "  ·  learn at " .. r.learn
-          elseif r.trainer then info = info .. "  ·  " .. warm .. "trainer|r"
+          -- where the recipe comes from (and what it costs when it's an item), then when you can learn it
+          if r.trainer then
+            info = info .. "  ·  " .. warm .. "trainer|r"
           elseif r.plans > 0 then
-            info = info .. "  ·  " .. warm .. "buy recipe" .. ((st.plans or 0) > 0 and (" ~" .. money(st.plans)) or "") .. "|r"
+            local rp, where = buyPrice(r.plans)
+            if rp then
+              info = info .. "  ·  " .. warm .. "recipe ~" .. money(rp) .. (where == "vendor" and " vendor" or " AH") .. "|r"
+            else
+              info = info .. "  ·  " .. warm .. "recipe: no price yet|r"
+            end
             plansTotal = plansTotal + (st.plans or 0)
           end
+          if r.learn > cur then info = info .. "  ·  at " .. r.learn end
         end
         if Ench.slotOf(r) then
           local tg = Ench.target(r)

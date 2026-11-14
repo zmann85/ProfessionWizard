@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### New
+- Recipes that aren't taught by trainers show what the recipe costs on their route line ("recipe ~1g 20s AH", or
+  "vendor", or "no price yet"), also before you can learn them. The tooltip has the details, and clicking the line
+  searches the auction house for the recipe (shift-click links it).
+
 ### Fixed
 - The summary under the materials (still to buy, the whole route's cost) was squeezed next to the buttons and cut
   off. It now has its own lines across the window, with the buttons in a row underneath.
