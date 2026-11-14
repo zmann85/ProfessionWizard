@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Materials you only need to make something else on the list (ore for the bars you smelt, stone for grinding
+  stones) are an indented line under that item. When a recipe needs some of it as it is, that part keeps its own
+  line; what you have counts toward that first.
+
 ## v1.0.1 (2026-11-14)
 
 ### Fixed

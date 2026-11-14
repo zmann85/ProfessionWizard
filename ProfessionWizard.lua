@@ -826,9 +826,9 @@ local function materials(steps, ctx)
   for _, st in ipairs(steps) do if st.r then L.unitCost(st.r.creates, ctx, 0) end end
   for id in pairs(base) do L.unitCost(id, ctx, 0) end
 
-  local extra, reserved, rows = {}, {}, nil
+  local extra, reserved, rows, from = {}, {}, nil, {}
   for _ = 1, 6 do
-    local newExtra, newReserved = {}, {}
+    local newExtra, newReserved, newFrom = {}, {}, {}
     rows = {}
     for _, id in ipairs(order) do
       local n = (base[id] or 0) + (extra[id] or 0)
@@ -861,6 +861,8 @@ local function materials(steps, ctx)
           row.makeRec = row.makeRec or via
           for _, m in ipairs(via.mats) do
             newExtra[m[1]] = (newExtra[m[1]] or 0) + m[2] * crafts
+            newFrom[m[1]] = newFrom[m[1]] or {}
+            newFrom[m[1]][id] = (newFrom[m[1]][id] or 0) + m[2] * crafts
             note(m[1])
           end
           left = 0
@@ -875,11 +877,11 @@ local function materials(steps, ctx)
     for k, v in pairs(extra) do if newExtra[k] ~= v then same = false end end
     for k, v in pairs(newReserved) do if reserved[k] ~= v then same = false end end
     for k, v in pairs(reserved) do if newReserved[k] ~= v then same = false end end
-    extra, reserved = newExtra, newReserved
+    extra, reserved, from = newExtra, newReserved, newFrom
     if same then break end
   end
   -- crafted items and makes first, then the rest by name
-  return rows
+  return rows, base, from
 end
 
 ---------------------------------------------------------------------------
@@ -1429,6 +1431,12 @@ function L.makeRow(i)
         GameTooltip:AddDoubleLine(label, num, 1, 1, 1, 1, 1, 1)
       end
     end
+    if row.forId then
+      local fname = GetItemInfo(row.forId) or "the item above"
+      GameTooltip:AddLine(string.format("%d of these are for making %s (the line above).", row.need, fname), 1, 0.82, 0.45, true)
+    elseif row.haveHere then
+      GameTooltip:AddLine(string.format("%d of these are needed as they are. More go into making other items (indented lines).", row.need), 1, 0.82, 0.45, true)
+    end
     if (row.reserved or 0) > 0 then
       GameTooltip:AddLine(string.format("%d of yours are used to make something else on the list.", row.reserved), 0.8, 0.8, 0.8, true)
     end
@@ -1876,9 +1884,10 @@ local function build()
   frame.foot:SetWidth(W - PAD * 2); frame.foot:SetWordWrap(true); frame.foot:SetSpacing(3)
   frame.buy = chip(frame, "SEARCH MISSING", 120)
   frame.buy:SetScript("OnClick", function()
-    local names = {}
+    local names, seen = {}, {}
     for _, row in ipairs(frame.list or {}) do
-      if row.missing > 0 then
+      if row.missing > 0 and not seen[row.id] then
+        seen[row.id] = true
         local n = GetItemInfo(row.id)
         if n then names[#names + 1] = n end
       end
@@ -2346,6 +2355,8 @@ local function renderSheet(g, warm, green, red, dim)
     if it then
       r.row = it
       r:ClearAllPoints(); r:SetPoint("TOPLEFT", PAD, -y); y = y + ROW_H
+      r.icon:ClearAllPoints(); r.icon:SetPoint("LEFT", 0, 0)
+      r.name:ClearAllPoints(); r.name:SetPoint("LEFT", 22, 0); r.name:SetWidth(220)
       r.icon:SetTexture(GetIcon and GetIcon(it.id) or 134400)
       r.name:SetText(GetItemInfo(it.id) or ("item " .. it.id))
       r.need:SetText(tostring(math.max(0, it.left)))
@@ -2403,6 +2414,54 @@ function L.sortRows(list)
     if ra ~= rb then return ra < rb end
     return (GetItemInfo(a.id) or "") < (GetItemInfo(b.id) or "")
   end)
+end
+
+-- Materials only needed to make something else on the list (ore for the bars you smelt, stone for grinding
+-- stones) go under that item as an indented line. When a recipe also needs some directly, that part keeps its
+-- own line. What you have counts toward the direct need first, then toward what gets made.
+function L.nestRows(list, base, from)
+  if not from or not next(from) then return list end
+  local out, kids = {}, {}
+  local function piece(row, n, pool)
+    local take = math.min(pool, n)
+    local c = {}
+    for k, v in pairs(row) do c[k] = v end
+    c.need, c.haveHere, c.missing = n, take, n - take
+    c.make, c.makeRec, c.src, c.srcN, c.srcRec = nil, nil, nil, nil, nil
+    return c, pool - take
+  end
+  for _, row in ipairs(list) do
+    local parents = from[row.id]
+    if parents and not row.make and not row.src then
+      local pool = row.have + (row.crafted or 0)
+      local direct = math.min(base[row.id] or 0, row.need)
+      if direct > 0 then
+        local c; c, pool = piece(row, direct, pool)
+        out[#out + 1] = c
+      end
+      for pid, n in pairs(parents) do
+        local c; c, pool = piece(row, n, pool)
+        c.child, c.forId = true, pid
+        kids[pid] = kids[pid] or {}
+        table.insert(kids[pid], c)
+      end
+    else
+      out[#out + 1] = row
+    end
+  end
+  -- put each indented line right under the item it's for
+  local final, placed = {}, {}
+  for _, row in ipairs(out) do
+    final[#final + 1] = row
+    if not row.child and kids[row.id] and not placed[row.id] then
+      placed[row.id] = true
+      for _, c in ipairs(kids[row.id]) do final[#final + 1] = c end
+    end
+  end
+  for pid, list_ in pairs(kids) do
+    if not placed[pid] then for _, c in ipairs(list_) do c.child = nil; final[#final + 1] = c end end
+  end
+  return final
 end
 
 ---------------------------------------------------------------------------
@@ -2716,8 +2775,10 @@ refresh = function()
   frame.colStat:ClearAllPoints(); frame.colStat:SetPoint("TOPLEFT", PAD + X_STAT, -y)
   y = y + 18
 
-  local list = (#steps > 0) and materials(steps, ctx) or {}
+  local list, mbase, mfrom = {}, nil, nil
+  if #steps > 0 then list, mbase, mfrom = materials(steps, ctx) end
   L.sortRows(list)
+  list = L.nestRows(list, mbase, mfrom)
   frame.list = list
   local cost, missingKinds = 0, 0
   local toSmelt = {}
@@ -2735,16 +2796,24 @@ refresh = function()
       r.row = row
       r:ClearAllPoints(); r:SetPoint("TOPLEFT", PAD, -y); y = y + ROW_H
       local name = GetItemInfo(row.id)
+      local indent = row.child and 18 or 0
+      r.icon:ClearAllPoints(); r.icon:SetPoint("LEFT", indent, 0)
+      r.name:ClearAllPoints(); r.name:SetPoint("LEFT", 22 + indent, 0); r.name:SetWidth(220 - indent)
       r.icon:SetTexture(GetIcon and GetIcon(row.id) or 134400)
       r.name:SetText(name or ("item " .. row.id))
       r.need:SetText(tostring(row.need))
-      local parts = { tostring(row.own) }
-      if row.mail > 0 then parts[#parts + 1] = row.mail .. " mail" end
-      if row.alts > 0 then parts[#parts + 1] = row.alts .. " alts" end
-      if (row.crafted or 0) > 0 then parts[#parts + 1] = row.crafted .. " crafted" end
       local smelt = row.makeRec and row.makeRec.prof == MINING
-      if row.src then parts[#parts + 1] = row.srcN .. (smelt and " ore" or " to use") end
-      r.have:SetText(table.concat(parts, " + "))
+      if row.haveHere then
+        -- a share of what you have (the rest counts on the item's other line)
+        r.have:SetText(tostring(row.haveHere))
+      else
+        local parts = { tostring(row.own) }
+        if row.mail > 0 then parts[#parts + 1] = row.mail .. " mail" end
+        if row.alts > 0 then parts[#parts + 1] = row.alts .. " alts" end
+        if (row.crafted or 0) > 0 then parts[#parts + 1] = row.crafted .. " crafted" end
+        if row.src then parts[#parts + 1] = row.srcN .. (smelt and " ore" or " to use") end
+        r.have:SetText(table.concat(parts, " + "))
+      end
       if row.make and row.missing == 0 then
         r.status:SetText(warm .. (smelt and "smelt " or "make ") .. row.make .. "|r")
       elseif row.missing > 0 then
