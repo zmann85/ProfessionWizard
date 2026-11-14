@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v1.0.0 (2026-11-14)
+
+First full release.
 
 ### Changed
 - The mailbox panel's button fills the mail (the crafter's name, a subject and what it needs from your bags) and

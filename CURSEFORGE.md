@@ -44,4 +44,4 @@ Profession Wizard works out which recipe to craft at each skill point so that le
 
 ---
 
-This is a beta. Questions and bug reports are welcome in the comments; `/pw debug` output helps a lot.
+Questions and bug reports are welcome in the comments; `/pw debug` output helps a lot.
