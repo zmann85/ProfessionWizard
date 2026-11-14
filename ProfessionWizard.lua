@@ -3039,11 +3039,17 @@ end
 
 local function onWindowOpen(mode)
   tsOpen, tsMode, recipeCache = true, mode, nil
-  C_Timer.After(0.3, function()
+  -- Show the list as soon as the window says which profession it is (usually straight away; otherwise try
+  -- again every 50ms for half a second), and read its recipes right after, so the list doesn't lag behind.
+  local tries = 0
+  local function go()
     if not tsOpen then return end
     tsProf = windowProf()
-    if not tsProf then return end
-    pcall(learnWindow)
+    if not tsProf then
+      tries = tries + 1
+      if tries <= 10 then C_Timer.After(0.05, go) end
+      return
+    end
     if PROF[tsProf] and not PROF[tsProf].gather then
       local rank = readSkill(tsProf)
       if rank and rank < 300 and frame then
@@ -3052,8 +3058,14 @@ local function onWindowOpen(mode)
         elseif frame:IsShown() then placeFrame() end
       end
     end
-    soon()
-  end)
+    C_Timer.After(0.05, function()
+      if not tsOpen then return end
+      recipeCache = nil
+      pcall(learnWindow)
+      soon()
+    end)
+  end
+  go()
 end
 
 -- the tutorial starts the first time the window shows a profession you can still level

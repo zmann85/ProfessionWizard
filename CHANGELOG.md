@@ -8,6 +8,8 @@
   searches the auction house for the recipe (shift-click links it).
 
 ### Fixed
+- The list opened noticeably after the profession window. It now opens with it and reads the window's recipes
+  right after.
 - The summary under the materials (still to buy, the whole route's cost) was squeezed next to the buttons and cut
   off. It now has its own lines across the window, with the buttons in a row underneath.
 
