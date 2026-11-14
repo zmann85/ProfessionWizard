@@ -3151,6 +3151,8 @@ local function noteBought(id, cnt)
   if not c then return end
   c.incoming = c.incoming or {}
   c.incoming[id] = (c.incoming[id] or 0) + (cnt or 1)
+  local _, link = GetItemInfo(id)
+  Print(string.format("bought %dx %s: counted as on the way to you.", cnt or 1, link or ("item " .. id)))
   soon()
   if mp and mp:IsShown() and mpRefresh then mpRefresh() end
 end
