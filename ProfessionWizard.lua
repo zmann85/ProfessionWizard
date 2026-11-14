@@ -38,8 +38,19 @@ local SCHEMES = {
   slate     = { accent = { 0.86, 0.86, 0.86 }, warm = { 1, 1, 1 }, bg = { 0.06, 0.06, 0.065 }, btn = { 0.14, 0.14, 0.15 }, onAccent = { 0.05, 0.05, 0.05 } },
 }
 
+-- in the order and with the names Itinerary's setting uses
+L.SCHEME_ORDER = {
+  { "copper", "Copper" }, { "itinerary", "Itinerary" }, { "amethyst", "Amethyst" },
+  { "frost", "Frost" }, { "ember", "Ember" }, { "slate", "Slate" },
+}
+
+-- SETTINGS > Color scheme (ProfessionWizardDB.scheme). Not chosen: Itinerary's scheme when it's installed,
+-- otherwise copper.
 local function scheme()
-  local key = ItineraryDB and ItineraryDB.panel and ItineraryDB.panel.scheme or "copper"
+  local key = ProfessionWizardDB and ProfessionWizardDB.scheme
+  if not key or not SCHEMES[key] then
+    key = ItineraryDB and ItineraryDB.panel and ItineraryDB.panel.scheme or "copper"
+  end
   return SCHEMES[key] or SCHEMES.copper
 end
 
@@ -1688,8 +1699,53 @@ local function build()
   opts.tut = chip(opts, "SHOW TUTORIAL", 192)
   opts.tut:SetPoint("TOP", opts.auto, "BOTTOM", 0, -4)
   opts.tut:SetScript("OnClick", function() SlashCmdList.PROFESSIONWIZARD("tutorial") end)
+  -- Color scheme: one swatch per scheme, like Itinerary's setting; picking one reloads the UI
+  opts.schemeLbl = text(opts, 10, 1, 1, 1, 0.5)
+  opts.schemeLbl:SetPoint("TOPLEFT", opts.tut, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
+  opts.swatches = {}
+  for i, sc in ipairs(L.SCHEME_ORDER) do
+    local key, label = sc[1], sc[2]
+    local b = CreateFrame("Button", nil, opts)
+    b:SetSize(28, 18)
+    b:SetPoint("TOPLEFT", opts.schemeLbl, "BOTTOMLEFT", (i - 1) * 32, -4)
+    local c = SCHEMES[key].accent
+    local tex = b:CreateTexture(nil, "ARTWORK"); tex:SetAllPoints(); tex:SetColorTexture(c[1], c[2], c[3], 1)
+    b.ring = CreateFrame("Frame", nil, b); b.ring:SetPoint("TOPLEFT", -2, 2); b.ring:SetPoint("BOTTOMRIGHT", 2, -2)
+    edges(b.ring, 1, 1, 1, 0.9); b.ring:Hide()
+    b.key = key
+    b:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:AddLine(label)
+      if key == "itinerary" then GameTooltip:AddLine("Green and gold; follows EllesmereUI's colour when it's installed.", 0.8, 0.8, 0.8, true) end
+      GameTooltip:AddLine("Click to use it. The UI reloads.", 0.6, 0.6, 0.6, true)
+      GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetScript("OnClick", function()
+      if ProfessionWizardDB.scheme == key then return end
+      ProfessionWizardDB.scheme = key; ReloadUI()
+    end)
+    opts.swatches[i] = b
+  end
+  local hasItinerary = ItineraryDB and ItineraryDB.panel and true or false
+  local h = 88 + 10 + 12 + 4 + 18 + 8
+  if hasItinerary then
+    opts.follow = chip(opts, "SAME AS ITINERARY", 192)
+    opts.follow:SetPoint("TOPLEFT", opts.schemeLbl, "BOTTOMLEFT", 0, -28)
+    opts.follow:SetScript("OnClick", function()
+      if ProfessionWizardDB.scheme == nil then return end
+      ProfessionWizardDB.scheme = nil; ReloadUI()
+    end)
+    tip(opts.follow, "Same as Itinerary", "Use whatever colour scheme Itinerary is set to. The UI reloads.")
+    h = h + 26
+  end
+  opts:SetHeight(h)
   opts:SetScript("OnShow", function(self)
     self.mini:SetActive(not ProfessionWizardDB.minimap.hide); self.auto:SetActive(ProfessionWizardDB.auto ~= false)
+    local cur = ProfessionWizardDB.scheme
+    local shown = cur or (ItineraryDB and ItineraryDB.panel and ItineraryDB.panel.scheme) or "copper"
+    for _, b in ipairs(self.swatches) do b.ring:SetShown(b.key == shown) end
+    if self.follow then self.follow:SetActive(cur == nil) end
   end)
   setBtn:SetScript("OnClick", function()
     opts:SetShown(not opts:IsShown())

@@ -40,7 +40,7 @@ The first time the list opens, a short walkthrough shows where everything is.
 | `/pw alts` / `forget Name` | the alts it's counting / stop counting one |
 | `/pw auto` | open (or not) with your profession windows |
 | `/pw tutorial` | the first-time walkthrough again |
-| `/pw minimap` | show or hide the minimap button |
+| `/pw minimap` | show or hide the minimap button (SETTINGS also has the color scheme) |
 | `/pw reset` | forget where you dragged the window, so it opens next to the profession window again |
 | `/pw debug` | what Profession Wizard sees in the open profession window (paste this in a bug report) |
 | `/pw help` | all commands |
