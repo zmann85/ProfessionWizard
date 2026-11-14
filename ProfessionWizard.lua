@@ -1699,9 +1699,24 @@ local function build()
   opts.tut = chip(opts, "SHOW TUTORIAL", 192)
   opts.tut:SetPoint("TOP", opts.auto, "BOTTOM", 0, -4)
   opts.tut:SetScript("OnClick", function() SlashCmdList.PROFESSIONWIZARD("tutorial") end)
+  -- the panel next to Send Mail that fills mails with what your crafters need (on unless switched off)
+  opts.mailp = chip(opts, "MAILBOX PANEL", 192)
+  opts.mailp:SetPoint("TOP", opts.tut, "BOTTOM", 0, -4)
+  opts.mailp:SetScript("OnClick", function(self)
+    ProfessionWizardDB.mailPanel = (ProfessionWizardDB.mailPanel == false)
+    self:SetActive(ProfessionWizardDB.mailPanel)
+    -- right away when the mailbox is open (showing it lets the panel check whether it belongs there)
+    local panel = _G.ProfessionWizardMailPanel
+    if panel then
+      if not ProfessionWizardDB.mailPanel then panel:Hide()
+      elseif _G.SendMailFrame and _G.SendMailFrame:IsShown() then panel:Show() end
+    end
+  end)
+  tip(opts.mailp, "Mailbox panel",
+    "On Send Mail: what your crafters still need from this character, with FILL MAIL to attach it.")
   -- Color scheme: one swatch per scheme, like Itinerary's setting; picking one reloads the UI
   opts.schemeLbl = text(opts, 10, 1, 1, 1, 0.5)
-  opts.schemeLbl:SetPoint("TOPLEFT", opts.tut, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
+  opts.schemeLbl:SetPoint("TOPLEFT", opts.mailp, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
   opts.swatches = {}
   for i, sc in ipairs(L.SCHEME_ORDER) do
     local key, label = sc[1], sc[2]
@@ -1728,7 +1743,7 @@ local function build()
     opts.swatches[i] = b
   end
   local hasItinerary = ItineraryDB and ItineraryDB.panel and true or false
-  local h = 88 + 10 + 12 + 4 + 18 + 8
+  local h = 88 + 26 + 10 + 12 + 4 + 18 + 8
   if hasItinerary then
     opts.follow = chip(opts, "SAME AS ITINERARY", 192)
     opts.follow:SetPoint("TOPLEFT", opts.schemeLbl, "BOTTOMLEFT", 0, -28)
@@ -1746,6 +1761,7 @@ local function build()
     local shown = cur or (ItineraryDB and ItineraryDB.panel and ItineraryDB.panel.scheme) or "copper"
     for _, b in ipairs(self.swatches) do b.ring:SetShown(b.key == shown) end
     if self.follow then self.follow:SetActive(cur == nil) end
+    self.mailp:SetActive(ProfessionWizardDB.mailPanel ~= false)
   end)
   setBtn:SetScript("OnClick", function()
     opts:SetShown(not opts:IsShown())
@@ -3161,7 +3177,7 @@ mpRefresh = function()
   if not mp then mpBuild() end
   if not mp then return end
   local g, list = L.chosenGoal()
-  if not g or not L.sendTabShown() then mp:Hide(); return end
+  if not g or not L.sendTabShown() or ProfessionWizardDB.mailPanel == false then mp:Hide(); return end
   L.mpPlace()
   mp:Show()
   local y = 28

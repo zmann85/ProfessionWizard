@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### New
+- SETTINGS > MAILBOX PANEL switches the panel next to Send Mail on or off (on by default).
 - SETTINGS > Color scheme: Copper, Itinerary, Amethyst, Frost, Ember and Slate, the same schemes as Itinerary.
   Picking one reloads the UI. Until you pick one, Profession Wizard uses Itinerary's scheme when Itinerary is
   installed (SAME AS ITINERARY switches back to that), otherwise Copper.
