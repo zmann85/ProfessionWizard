@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.4.1-beta (2026-11-14)
 
 ### New
 - Recipes that aren't taught by trainers show what the recipe costs on their route line ("recipe ~1g 20s AH", or
