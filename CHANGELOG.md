@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.0.1 (2026-11-14)
 
 ### Fixed
 - 45 recipes were planned as taught by trainers although they need plans, a pattern or a recipe item, so a
