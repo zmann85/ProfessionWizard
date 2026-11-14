@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+- 39 more recipe sources, checked against wowcraft.io's WoW Forever data: the new Forever chain sets (Veteran's,
+  Guard's, Protector's, Acolyte's, Crusader's), the leather Helm/Pants/Armor sets, Shining Mithril Helm,
+  Prefect's Waistguard, Greater Mender's Potion, the Heart of the Mountain variants and the 9-60 Battery Pack
+  are taught by recipe items, not trainers. Elixir of Minor Fortitude is a trainer recipe (it was tied to a
+  recipe item that never existed). Saved routes show as out of date once more.
+
 ### New
 - SETTINGS > MAILBOX PANEL switches the panel next to Send Mail on or off (on by default).
 - SETTINGS > Color scheme: Copper, Itinerary, Amethyst, Frost, Ember and Slate, the same schemes as Itinerary.
