@@ -8,6 +8,9 @@
   more than 12 stacks, fill and send again.
 
 ### Fixed
+- The mailbox panel showed on the Inbox tab too. It's only on Send Mail now, opening and closing with that tab.
+- The mailbox panel kept a gap for another addon's panel even when that wasn't showing. It sits right next to
+  the mail window unless something else is there.
 - Alts only offered the ore for bars the crafter smelts itself, not the bars they already have. Finished items
   (bars, grinding stones ...) are now sent first, then the material for the rest. The crafter's list has to be
   saved once more for this (log in on it).

@@ -2967,25 +2967,38 @@ local function mpBuild()
     "What you send is counted on the crafter's list straight away. More than 12 stacks: fill and send again.")
   mp:SetScript("OnShow", function() if mpRefresh then mpRefresh() end end)
   mp:Hide()
+  local later = function() C_Timer.After(0, function() if mpRefresh then mpRefresh() end end) end
+  if _G.SendMailFrame then
+    _G.SendMailFrame:HookScript("OnShow", later)
+    _G.SendMailFrame:HookScript("OnHide", function() mp:Hide() end)
+  end
+  if _G.GoldSenseMailAlts then
+    _G.GoldSenseMailAlts:HookScript("OnShow", later)
+    _G.GoldSenseMailAlts:HookScript("OnHide", later)
+  end
 end
 
+-- next to the mail window; when another addon's panel is showing there (GoldSense's alt list), next to that
 local function mpPlace()
-  local anchor = _G.MailFrame
   mp:ClearAllPoints()
-  local sl = _G.SmithListMailPanel
-  if sl and sl:IsShown() then
-    mp:SetPoint("TOPLEFT", sl, "BOTTOMLEFT", 0, -6)
+  local other = _G.GoldSenseMailAlts
+  if other and other:IsShown() then
+    mp:SetPoint("TOPLEFT", other, "TOPRIGHT", 6, 0)
   else
-    local x = _G.GoldSenseMailAlts and (6 + (_G.GoldSenseMailAlts:GetWidth() or 180) + 6) or 6
-    mp:SetPoint("TOPLEFT", anchor, "TOPRIGHT", x, 0)
+    mp:SetPoint("TOPLEFT", _G.MailFrame, "TOPRIGHT", 6, 0)
   end
+end
+
+-- only on the Send Mail tab: open with it, close with it
+local function sendTabShown()
+  return _G.SendMailFrame and _G.SendMailFrame:IsShown() and _G.MailFrame and _G.MailFrame:IsShown()
 end
 
 mpRefresh = function()
   if not mp then mpBuild() end
   if not mp then return end
   local g, list = chosenGoal()
-  if not g or not (_G.MailFrame and _G.MailFrame:IsShown()) then mp:Hide(); return end
+  if not g or not sendTabShown() then mp:Hide(); return end
   mpPlace()
   mp:Show()
   local y = 28
