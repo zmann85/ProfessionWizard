@@ -3145,17 +3145,22 @@ end
 
 -- What you buy out at the auction house goes to your mailbox: count it as on the way to you straight away,
 -- the way mail you send is counted. Reading your inbox replaces this with what's really there.
-local function noteBid(listType, index, bid)
-  if not (GetAuctionItemInfo and ProfessionWizardDB and ProfessionWizardDB.chars) then return end
-  local info = { GetAuctionItemInfo(listType, index) }
-  local cnt, buyout, id = info[3], info[10], info[17]
-  if not (type(id) == "number" and WANT[id] and buyout and buyout > 0 and bid and bid >= buyout) then return end
+local function noteBought(id, cnt)
+  if not (type(id) == "number" and WANT[id] and ProfessionWizardDB and ProfessionWizardDB.chars) then return end
   local c = ProfessionWizardDB.chars[myKey()]
   if not c then return end
   c.incoming = c.incoming or {}
   c.incoming[id] = (c.incoming[id] or 0) + (cnt or 1)
   soon()
   if mp and mp:IsShown() and mpRefresh then mpRefresh() end
+end
+
+-- the older auction house (Blizzard's window and Auctionator call PlaceAuctionBid)
+local function noteBid(listType, index, bid)
+  if not GetAuctionItemInfo then return end
+  local info = { GetAuctionItemInfo(listType, index) }
+  local cnt, buyout, id = info[3], info[10], info[17]
+  if buyout and buyout > 0 and bid and bid >= buyout then noteBought(id, cnt) end
 end
 
 local ev = CreateFrame("Frame")
@@ -3194,6 +3199,10 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     if SendMail then pcall(hooksecurefunc, "SendMail", function(recipient) pcall(noteOutgoing, recipient) end) end
     if PlaceAuctionBid then
       pcall(hooksecurefunc, "PlaceAuctionBid", function(listType, index, bid) pcall(noteBid, listType, index, bid) end)
+    end
+    -- the newer auction house: ores, bars, gems and the like are bought as "commodities" by id and amount
+    if C_AuctionHouse and C_AuctionHouse.ConfirmCommoditiesPurchase then
+      pcall(hooksecurefunc, C_AuctionHouse, "ConfirmCommoditiesPurchase", function(id, qty) pcall(noteBought, id, qty) end)
     end
     self:UnregisterEvent("ADDON_LOADED")
     if event ~= "PLAYER_LOGIN" then return end
