@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Thorium Greatsword was planned as taught by trainers. It needs Plans: Thorium Greatsword, so the route only
+  uses it when the plans are on the auction house or at a vendor. Click FIND CHEAPEST ROUTE to plan around it.
+
 ## v1.0.0 (2026-11-14)
 
 First full release.

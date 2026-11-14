@@ -1,6 +1,8 @@
 import re, json, collections
 J='/home/claude/bparish628/wow-profession-journal/Data/Recipes.lua'
 atlas=json.load(open('recipes.json'))
+# Thorium Greatsword: not taught by trainers, it needs Plans: Thorium Greatsword (12816), seen in game 14 Nov 2026
+OVERRIDES={16960:(12816,False)}
 PROF={171:'Alchemy',164:'Blacksmithing',185:'Cooking',333:'Enchanting',202:'Engineering',129:'First Aid',165:'Leatherworking',186:'Mining',40:'Poisons',197:'Tailoring'}
 num=lambda k,s:(lambda m:int(m.group(1)) if m else None)(re.search(r'\b'+k+r' = (\d+)',s))
 recs=collections.defaultdict(list); est=collections.Counter(); shifted=0
@@ -24,6 +26,8 @@ for line in open(J):
     if y is None or y==0: y=learn
     if g is None or g==0: g=y+25
     learn=max(1,min(learn,y))
+    # corrections the client data gets wrong: (plans item, from trainer)
+    if sp in OVERRIDES: ri, trainer = OVERRIDES[sp]
     recs[p].append((sp,learn,y,g,cr or 0,n,ri or 0,1 if trainer else 0,name,[(int(i),int(c)) for i,c in mats]))
 out=['-- ProfessionWizard_Data (GNU GPL v2, see LICENSE.txt): recipe data for Profession Wizard.','local ns = ProfessionWizardAPI','if not ns then return end','-- Generated from WoW Forever client data (build 1.60.1.70245, via wow-profession-journal, MIT)',
      '-- plus AtlasLoot (GPL) learn levels and crafted amounts. Do not edit by hand: rerun gen.py.',
