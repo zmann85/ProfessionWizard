@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Fixed
+- 45 recipes were planned as taught by trainers although they need plans, a pattern or a recipe item, so a
+  route could have you buy materials for a recipe no trainer teaches. Among them Ornate Mithril Breastplate, Boots
+  and Helm, Bleakwood Hew, Inlaid Thorium Hammer, Rune Edge, Ironforge Chain and Gauntlets, Orcish War Leggings,
+  Green Woolen Robe and Boots of Darkness. A route now only uses them when you know the recipe or its item is on
+  the auction house or at a vendor. Saved routes show as out of date: click FIND CHEAPEST ROUTE.
 - Thorium Greatsword was planned as taught by trainers. It needs Plans: Thorium Greatsword, so the route only
   uses it when the plans are on the auction house or at a vendor. Click FIND CHEAPEST ROUTE to plan around it.
 

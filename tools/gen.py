@@ -3,6 +3,17 @@ J='/home/claude/bparish628/wow-profession-journal/Data/Recipes.lua'
 atlas=json.load(open('recipes.json'))
 # Thorium Greatsword: not taught by trainers, it needs Plans: Thorium Greatsword (12816), seen in game 14 Nov 2026
 OVERRIDES={16960:(12816,False)}
+# A recipe the client data calls "trainer" that has a plans/pattern/formula/recipe item in AtlasLoot's
+# Data/Recipe.lua (Classic block) is taught by that item: 45 such recipes were planned as trainer recipes
+# (Ornate Mithril, Bleakwood Hew, Rune Edge ...). Put AtlasLoot's Recipe.lua in src/ to apply this rule.
+import os
+TEACH={}
+if os.path.exists('src/Recipe.lua'):
+    _al=open('src/Recipe.lua',encoding='utf-8',errors='replace').read()
+    _al=_al[_al.find('RECIPE_DATA.CLASSIC'):_al.find('RECIPE_DATA.BCC')]
+    for _it,_pr,_rk,_sp,_nm in re.findall(r'\[(\d+)\]\s*=\s*\{\s*(\d+),\s*(\d+),\s*(\d+)\s*\},?\s*--\s*([^\n]*)', _al):
+        if re.match(r'(Deprecated )?(Plans|Pattern|Formula|Recipe|Schematic|Manual)\b', _nm.strip()):
+            TEACH.setdefault(int(_sp), int(_it))
 PROF={171:'Alchemy',164:'Blacksmithing',185:'Cooking',333:'Enchanting',202:'Engineering',129:'First Aid',165:'Leatherworking',186:'Mining',40:'Poisons',197:'Tailoring'}
 num=lambda k,s:(lambda m:int(m.group(1)) if m else None)(re.search(r'\b'+k+r' = (\d+)',s))
 recs=collections.defaultdict(list); est=collections.Counter(); shifted=0
@@ -28,6 +39,7 @@ for line in open(J):
     learn=max(1,min(learn,y))
     # corrections the client data gets wrong: (plans item, from trainer)
     if sp in OVERRIDES: ri, trainer = OVERRIDES[sp]
+    elif trainer and not ri and sp in TEACH: ri, trainer = TEACH[sp], False
     recs[p].append((sp,learn,y,g,cr or 0,n,ri or 0,1 if trainer else 0,name,[(int(i),int(c)) for i,c in mats]))
 out=['-- ProfessionWizard_Data (GNU GPL v2, see LICENSE.txt): recipe data for Profession Wizard.','local ns = ProfessionWizardAPI','if not ns then return end','-- Generated from WoW Forever client data (build 1.60.1.70245, via wow-profession-journal, MIT)',
      '-- plus AtlasLoot (GPL) learn levels and crafted amounts. Do not edit by hand: rerun gen.py.',
