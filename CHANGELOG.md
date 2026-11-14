@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.2.0 (2026-11-14)
 
 ### Fixed
 - 39 more recipe sources, checked against wowcraft.io's WoW Forever data: the new Forever chain sets (Veteran's,
