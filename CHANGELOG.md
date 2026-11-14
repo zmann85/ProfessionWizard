@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.1.0 (2026-11-14)
 
 ### Changed
 - Materials you only need to make something else on the list (ore for the bars you smelt, stone for grinding
