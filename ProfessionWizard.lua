@@ -907,13 +907,19 @@ local function goalFor(pid)
     return materials(st, ctx), st
   end)
   noAlts = false
-  local needs, alt, rowsOut, stepsOut = {}, {}, {}, {}
+  local needs, alt, prod, rowsOut, stepsOut = {}, {}, {}, {}, {}
   if ok and list then
     for _, row in ipairs(list) do
       if row.missing > 0 then
         needs[row.id] = row.missing
         local r1 = row.makeRec
         if r1 and #r1.mats == 1 then alt[row.id] = { r1.mats[1][1], r1.mats[1][2] / r1.made } end
+      end
+      -- what the crafter makes itself from one material (bars from ore, grinding stones from stone): an alt
+      -- with the finished item can send that in place of the material. { item, material per item, how many }
+      local r2 = row.makeRec
+      if (row.make or 0) > 0 and r2 and #r2.mats == 1 then
+        prod[r2.mats[1][1]] = { row.id, r2.mats[1][2] / r2.made, row.make }
       end
       rowsOut[#rowsOut + 1] = { id = row.id, need = row.need, missing = row.missing, make = row.make,
         smelt = row.makeRec and row.makeRec.prof == MINING or nil }
@@ -924,7 +930,7 @@ local function goalFor(pid)
   end
   return {
     owner = myKey(), pid = pid, name = UnitName("player"), full = fullName(), realm = GetRealmName(),
-    faction = UnitFactionGroup("player"), skill = rank, target = target, needs = needs, alt = alt,
+    faction = UnitFactionGroup("player"), skill = rank, target = target, needs = needs, alt = alt, prod = prod,
     rows = rowsOut, steps = stepsOut, time = time(), sent = {},
   }
 end
@@ -2803,6 +2809,17 @@ local function sendPlan(g)
     local alt = g.alt and g.alt[id]
     local left = n - (g.sent[id] or 0)
     if alt then left = left - math.floor((g.sent[alt[1]] or 0) / math.max(alt[2], 0.0001)) end
+    -- finished items first (bars for the ore it would smelt), then the material for the rest
+    local pr = g.prod and g.prod[id]
+    if pr and left > 0 then
+      left = left - math.floor((g.sent[pr[1]] or 0) * pr[2])
+      local made = math.min(math.ceil(left / math.max(pr[2], 0.0001)), pr[3] - (g.sent[pr[1]] or 0))
+      local give = math.max(0, math.min(made, bagCount(pr[1])))
+      if give > 0 then
+        items[#items + 1] = { id = pr[1], n = give, bank = 0, raw = true }
+        left = left - math.ceil(give * pr[2])
+      end
+    end
     if left > 0 then
       local give = math.min(left, bagCount(id))
       local bankMore = math.max(0, math.min(left - give, rawCount(id, true) - rawCount(id, false)))

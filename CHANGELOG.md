@@ -8,6 +8,9 @@
   more than 12 stacks, fill and send again.
 
 ### Fixed
+- Alts only offered the ore for bars the crafter smelts itself, not the bars they already have. Finished items
+  (bars, grinding stones ...) are now sent first, then the material for the rest. The crafter's list has to be
+  saved once more for this (log in on it).
 - Your crafters' lists never reached your alts: logging out saved every character's bags and skills as empty
   (that's how the game reports them by then), and the crafter's lists were deleted with them. Nothing is saved
   at logout any more, and an empty read never replaces what was saved before. Log in on each crafter once
