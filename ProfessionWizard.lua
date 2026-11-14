@@ -2293,9 +2293,19 @@ local function renderSheet(g, warm, green, red, dim)
     local left = (row.missing or 0) - (g.sent[row.id] or 0)
     local alt = g.alt and g.alt[row.id]
     if alt then left = left - math.floor((g.sent[alt[1]] or 0) / math.max(alt[2], 0.0001)) end
+    local pr = g.prod and g.prod[row.id]
+    if pr then left = left - math.floor((g.sent[pr[1]] or 0) * pr[2]) end
     if (row.missing or 0) > 0 then
       local it = newRow(row.id, math.max(0, left))
-      it.mine = rawCount(row.id, true)
+      -- yours here: bags and bank, plus mail and auction house buys on the way (send them once looted),
+      -- plus finished items it would make itself (your bars cover the ore for them)
+      it.mine = rawCount(row.id, true) + ownMail(row.id)
+      it.inMail = ownMail(row.id)
+      if pr then
+        local own = rawCount(pr[1], true) + ownMail(pr[1])
+        it.mine = it.mine + math.floor(math.min(own, math.max(0, pr[3] - (g.sent[pr[1]] or 0))) * pr[2])
+        it.inMail = it.inMail + math.floor(ownMail(pr[1]) * pr[2])
+      end
       it.send = math.max(0, math.min(left, it.mine))
       it.missing = math.max(0, left - it.send)
       it.left = left
@@ -2318,7 +2328,10 @@ local function renderSheet(g, warm, green, red, dim)
       r.have:SetText(tostring(it.mine))
       local parts = {}
       if it.left <= 0 then parts[1] = green .. "sent|r" end
-      if it.send > 0 then parts[#parts + 1] = warm .. "send " .. it.send .. "|r" end
+      if it.send > 0 then
+        local m = math.min(it.send, it.inMail or 0)
+        parts[#parts + 1] = warm .. "send " .. it.send .. "|r" .. (m > 0 and (dim .. " (" .. m .. " in your mail)|r") or "")
+      end
       if it.missing > 0 then
         local p = buyPrice(it.id)
         parts[#parts + 1] = red .. "buy " .. it.missing .. "|r" .. (p and (dim .. " ~" .. money(p * it.missing) .. "|r") or "")
@@ -3130,6 +3143,21 @@ do
   end
 end
 
+-- What you buy out at the auction house goes to your mailbox: count it as on the way to you straight away,
+-- the way mail you send is counted. Reading your inbox replaces this with what's really there.
+local function noteBid(listType, index, bid)
+  if not (GetAuctionItemInfo and ProfessionWizardDB and ProfessionWizardDB.chars) then return end
+  local info = { GetAuctionItemInfo(listType, index) }
+  local cnt, buyout, id = info[3], info[10], info[17]
+  if not (type(id) == "number" and WANT[id] and buyout and buyout > 0 and bid and bid >= buyout) then return end
+  local c = ProfessionWizardDB.chars[myKey()]
+  if not c then return end
+  c.incoming = c.incoming or {}
+  c.incoming[id] = (c.incoming[id] or 0) + (cnt or 1)
+  soon()
+  if mp and mp:IsShown() and mpRefresh then mpRefresh() end
+end
+
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("ADDON_LOADED")
 ev:RegisterEvent("PLAYER_LOGIN")
@@ -3164,6 +3192,9 @@ ev:SetScript("OnEvent", function(self, event, arg1)
       pcall(self.RegisterEvent, self, e)
     end
     if SendMail then pcall(hooksecurefunc, "SendMail", function(recipient) pcall(noteOutgoing, recipient) end) end
+    if PlaceAuctionBid then
+      pcall(hooksecurefunc, "PlaceAuctionBid", function(listType, index, bid) pcall(noteBid, listType, index, bid) end)
+    end
     self:UnregisterEvent("ADDON_LOADED")
     if event ~= "PLAYER_LOGIN" then return end
   end

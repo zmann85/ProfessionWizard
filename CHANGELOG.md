@@ -8,6 +8,9 @@
   more than 12 stacks, fill and send again.
 
 ### Fixed
+- What you buy out at the auction house counts straight away, as on the way to you, not only once you've
+  taken it out of the mailbox. A crafter's list viewed on an alt (LISTS) counts that alt's mail too, says how much
+  of "send" is still in the mail, and counts its finished bars for the ore the crafter would smelt.
 - The mailbox panel showed on the Inbox tab too. It's only on Send Mail now, opening and closing with that tab.
 - The mailbox panel kept a gap for another addon's panel even when that wasn't showing. It sits right next to
   the mail window unless something else is there.
