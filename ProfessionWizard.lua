@@ -452,9 +452,14 @@ local function snapshot()
   local old = ProfessionWizardDB.chars[key] or {}
   local skills = {}
   for pid, s in pairs(readSkills()) do skills[pid] = s.rank end
+  -- Right after login and while logging out the game can report no skills and empty bags. Keep what we saw
+  -- last instead of saving that (it wiped every character's bags and skills, and with them the crafter lists).
+  if next(skills) == nil and old.skills then skills = old.skills end
+  local bags = scanBags(bagList())
+  if numSlots(0) == 0 and old.bags then bags = old.bags end
   local me = {
     name = UnitName("player"), realm = GetRealmName(), faction = UnitFactionGroup("player"),
-    skills = skills, time = time(), bags = scanBags(bagList()), bank = old.bank or {}, bankTime = old.bankTime,
+    skills = skills, time = time(), bags = bags, bank = old.bank or {}, bankTime = old.bankTime,
     mail = old.mail or {}, incoming = old.incoming or {}, mailTime = old.mailTime,
   }
   if bankOpen then me.bank = scanBags(bankList()); me.bankTime = time() end
@@ -928,10 +933,12 @@ saveGoals = function()
   if not ProfessionWizardDB then return end
   ProfessionWizardDB.goals = ProfessionWizardDB.goals or {}
   local me = myKey()
+  local skills = readSkills()
+  if next(skills) == nil then return end -- the game isn't telling (login, logout): keep the saved lists
   for k, g in pairs(ProfessionWizardDB.goals) do
     if g.owner == me then ProfessionWizardDB.goals[k] = nil end
   end
-  for pid in pairs(readSkills()) do
+  for pid in pairs(skills) do
     if not PROF[pid].gather then
       local g = goalFor(pid)
       if g then ProfessionWizardDB.goals[me .. ":" .. pid] = g end
@@ -2885,9 +2892,8 @@ local function sendNow()
     if box and box.SetText then box:SetText(g.full or g.name) end
     local subj = _G.SendMailSubjectEditBox
     if subj and subj.SetText then subj:SetText(subject) end
-    local ok = pcall(SendMail, g.full or g.name, subject, "")
-    if not ok then Print("everything is attached. Click Send to finish.") end
-    C_Timer.After(1, function() busy = false; if mpRefresh then mpRefresh() end end)
+    Print(string.format("mail to %s is filled. Check it and click Send.", g.name or "?"))
+    C_Timer.After(0.5, function() busy = false; if mpRefresh then mpRefresh() end end)
   end
   local function step()
     i = i + 1
@@ -2937,8 +2943,11 @@ local function mpBuild()
   for i = 1, MP_ROWS do mpRows[i] = mpMakeRow() end
   mp.note = text(mp, 11, s.warm[1], s.warm[2], s.warm[3], 0.85); mp.note:SetWidth(MP_W - MP_PAD * 2)
   mp.note:SetWordWrap(true)
-  mp.send = chip(mp, "SEND", MP_W - MP_PAD * 2)
+  mp.send = chip(mp, "FILL MAIL", MP_W - MP_PAD * 2)
   mp.send:SetScript("OnClick", sendNow)
+  tip(mp.send, "Fill the mail",
+    "Opens Send Mail, puts the crafter's name and a subject in and attaches what it needs from your bags (up to 12 stacks a mail). You check it and click Send.",
+    "What you send is counted on the crafter's list straight away. More than 12 stacks: fill and send again.")
   mp:SetScript("OnShow", function() if mpRefresh then mpRefresh() end end)
   mp:Hide()
 end
@@ -3002,7 +3011,14 @@ mpRefresh = function()
   local queue = attachQueue(items)
   local mails = math.ceil(#queue / MAX_ATTACH)
   local note = ""
-  if #queue == 0 then
+  local filled = false
+  if GetSendMailItem then
+    for i = 1, MAX_ATTACH do if GetSendMailItem(i) then filled = true; break end end
+  end
+  if filled and not busy then
+    note = "The mail is filled. Check it and click Send" .. (#queue > 0 and ", then fill the next one." or ".")
+    queue = {}
+  elseif #queue == 0 then
     note = "Nothing " .. (g.name or "they") .. " needs is in your bags."
   end
   if bankMore > 0 then note = note .. (note ~= "" and " " or "") .. bankMore .. " more is in your bank: take it out and it shows up here." end
@@ -3017,7 +3033,7 @@ mpRefresh = function()
   if #queue > 0 then
     mp.send:ClearAllPoints(); mp.send:SetPoint("TOPLEFT", MP_PAD, -y)
     if not busy then
-      mp.send.text:SetText(mails > 1 and string.format("SEND MAIL 1 OF %d", mails) or string.format("SEND %d ITEMS", count_))
+      mp.send.text:SetText(mails > 1 and string.format("FILL MAIL 1 OF %d", mails) or string.format("FILL MAIL: %d ITEMS", count_))
     end
     mp.send:SetActive(true); mp.send:Show()
     y = y + 28
@@ -3112,7 +3128,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
       "MAIL_SHOW", "MAIL_CLOSED", "MAIL_INBOX_UPDATE", "MAIL_SEND_SUCCESS", "MAIL_FAILED", "MERCHANT_SHOW",
       "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE",
       "CRAFT_SHOW", "CRAFT_CLOSE", "CRAFT_UPDATE", "PLAYER_REGEN_ENABLED",
-      "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "AUCTION_ITEM_LIST_UPDATE",
+      "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "AUCTION_ITEM_LIST_UPDATE", "MAIL_SEND_INFO_UPDATE",
       "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_FAILED",
       "REPLACE_ENCHANT" }) do
       pcall(self.RegisterEvent, self, e)
@@ -3166,8 +3182,10 @@ ev:SetScript("OnEvent", function(self, event, arg1)
   if event == "MAIL_SEND_SUCCESS" then deliverOutgoing() end
   if event == "MAIL_FAILED" then outgoing = nil end
   if event == "MAIL_SHOW" or (mp and mp:IsShown()) then C_Timer.After(0.25, mpRefresh) end
+  if event == "MAIL_SEND_INFO_UPDATE" then return end -- attachments changed: only the mailbox panel cares
   if event == "PLAYER_LOGIN" then pcall(importOthers); C_Timer.After(5, snapshot); return end
-  if event == "PLAYER_LOGOUT" then mailOpen, bankOpen = false, false; pcall(snapshot); return end
+  -- no snapshot at logout: the game reads bags and skills as empty by then, and the last change is saved already
+  if event == "PLAYER_LOGOUT" then mailOpen, bankOpen = false, false; return end
   if event ~= "CHAT_MSG_SKILL" then
     if not self.snapPending then
       self.snapPending = true

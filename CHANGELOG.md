@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- The mailbox panel's button fills the mail (the crafter's name, a subject and what it needs from your bags) and
+  leaves sending to you: FILL MAIL, check it, click Send. What you send still counts on the crafter's list. With
+  more than 12 stacks, fill and send again.
+
+### Fixed
+- Your crafters' lists never reached your alts: logging out saved every character's bags and skills as empty
+  (that's how the game reports them by then), and the crafter's lists were deleted with them. Nothing is saved
+  at logout any more, and an empty read never replaces what was saved before. Log in on each crafter once
+  (open its profession window) to save its list again.
+
 ## v0.4.1-beta (2026-11-14)
 
 ### New
