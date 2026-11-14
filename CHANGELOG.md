@@ -8,6 +8,8 @@
   more than 12 stacks, fill and send again.
 
 ### Fixed
+- Profession Wizard didn't load at all ("main function has more than 200 local variables"). The code is
+  reorganised to stay well inside Lua's limit.
 - A batch the game ended without saying so (out of materials, stopped in the profession window, after a
   disconnect) stayed "running": the bar stuck at e.g. 78 / 104 and every CRAFT or SMELT answered "already
   crafting". Casting nothing for a few seconds now ends it ("stopped after 78").

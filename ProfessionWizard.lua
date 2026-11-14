@@ -1,4 +1,5 @@
 local ADDON, ns = ...
+local L = {} -- helper functions live here: Lua 5.1 allows only 200 locals in the main chunk
 
 -- The recipe data is a separate add-on (ProfessionWizard_Data, GPL v2) that loads after Profession Wizard and fills
 -- ns.RECIPES through this global.
@@ -166,7 +167,7 @@ for _, p in ipairs(PROFS) do
   for _, n in ipairs(p.names) do p.nameSet[n] = true end
 end
 
-local function spellName(id)
+function L.spellName(id)
   if C_Spell and C_Spell.GetSpellName then
     local ok, n = pcall(C_Spell.GetSpellName, id)
     if ok and n then return n end
@@ -180,12 +181,12 @@ end
 local function profName(pid)
   local p = PROF[pid]
   if not p then return "?" end
-  p.local_ = p.local_ or spellName(p.spell) or p.names[1]
+  p.local_ = p.local_ or L.spellName(p.spell) or p.names[1]
   return p.local_
 end
 
 -- profession id from a skill line or window name
-local function profFromName(n)
+function L.profFromName(n)
   if not n then return nil end
   for _, p in ipairs(PROFS) do
     if p.nameSet[n] or n == profName(p.id) then return p.id end
@@ -198,7 +199,7 @@ local function readSkills()
   if GetNumSkillLines and GetSkillLineInfo then
     for i = 1, GetNumSkillLines() do
       local n, header, _, rank, _, _, maxRank = GetSkillLineInfo(i)
-      local pid = (not header) and profFromName(n)
+      local pid = (not header) and L.profFromName(n)
       if pid then out[pid] = { rank = rank, max = maxRank } end
     end
   end
@@ -208,7 +209,7 @@ local function readSkills()
       local idx = list[i]
       if idx then
         local n, _, rank, maxRank = GetProfessionInfo(idx)
-        local pid = profFromName(n)
+        local pid = L.profFromName(n)
         if pid then out[pid] = { rank = rank, max = maxRank } end
       end
     end
@@ -229,7 +230,7 @@ local function myKey() return (UnitName("player") or "?") .. "-" .. (GetRealmNam
 ---------------------------------------------------------------------------
 local cache = {}
 
-local function applyFix(r)
+function L.applyFix(r)
   local f = ProfessionWizardDB and ProfessionWizardDB.fix and ProfessionWizardDB.fix[r.spell]
   if f then r.y, r.g = f.y or r.y, f.g or r.g end
 end
@@ -243,7 +244,7 @@ local function recipes(pid)
       plans = t[7], trainer = (t[8] == 1), name = t[9], mats = {}, prof = pid }
     local m = t[10] or {}
     for i = 1, #m, 2 do r.mats[#r.mats + 1] = { m[i], m[i + 1] } end
-    applyFix(r)
+    L.applyFix(r)
     c.list[#c.list + 1] = r
     c.bySpell[r.spell] = r
     c.byName[r.name] = r
@@ -257,13 +258,13 @@ local function recipes(pid)
 end
 
 -- chance of a skill point at skill s: orange 1, yellow 1, then falling to 0 at grey
-local function chance(r, s)
+function L.chance(r, s)
   if s < r.learn or s >= r.g then return 0 end
   if s < r.y then return 1 end
   return (r.g - s) / (r.g - r.y)
 end
 
-local function colorAt(r, s)
+function L.colorAt(r, s)
   if s < r.learn then return "|cff808080" end
   if s < r.y then return "|cffff8040" end
   if s < (r.y + r.g) / 2 then return "|cffffff00" end
@@ -272,16 +273,16 @@ local function colorAt(r, s)
 end
 
 -- recipes this character knows, read from its profession windows
-local function knownSet()
+function L.knownSet()
   ProfessionWizardDB.known = ProfessionWizardDB.known or {}
   local k = myKey()
   ProfessionWizardDB.known[k] = ProfessionWizardDB.known[k] or {}
   return ProfessionWizardDB.known[k]
 end
 
-local function isKnown(r) return knownSet()[r.spell] and true or false end
+local function isKnown(r) return L.knownSet()[r.spell] and true or false end
 
-local function seenProf(pid)
+function L.seenProf(pid)
   ProfessionWizardDB.seen = ProfessionWizardDB.seen or {}
   local s = ProfessionWizardDB.seen[myKey()]
   return s and s[pid]
@@ -290,7 +291,7 @@ end
 ---------------------------------------------------------------------------
 -- Prices
 ---------------------------------------------------------------------------
-local function auctionatorPrice(id)
+function L.auctionatorPrice(id)
   local a = Auctionator and Auctionator.API and Auctionator.API.v1
   if not (a and a.GetAuctionPriceByItemID) then return nil end
   local ok, p = pcall(a.GetAuctionPriceByItemID, CALLER, id)
@@ -298,7 +299,7 @@ local function auctionatorPrice(id)
 end
 
 -- prices from Profession Wizard's own scan (SCAN AH), per realm
-local function scanStore()
+function L.scanStore()
   ProfessionWizardDB.scan = ProfessionWizardDB.scan or {}
   local r = GetRealmName() or "?"
   ProfessionWizardDB.scan[r] = ProfessionWizardDB.scan[r] or {}
@@ -309,12 +310,12 @@ end
 local function ahPrice(id)
   local own = ProfessionWizardDB.scan and ProfessionWizardDB.scan[GetRealmName() or "?"]
   own = own and own[id]
-  local a = auctionatorPrice(id)
+  local a = L.auctionatorPrice(id)
   if own and own.p and (not a or time() - own.t < 86400) then return own.p end
   return a or (own and own.p)
 end
 
-local function sellPrice(id)
+function L.sellPrice(id)
   local info = { GetItemInfo(id) }
   if info[1] == nil then
     if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
@@ -323,18 +324,18 @@ local function sellPrice(id)
   return info[11] or 0
 end
 
-local function vendorBuy(id)
+function L.vendorBuy(id)
   local seen = ProfessionWizardDB.vendor and ProfessionWizardDB.vendor[id]
   if seen then return seen end
   if ns.VENDOR_ITEMS[id] then
-    local s = sellPrice(id)
+    local s = L.sellPrice(id)
     if s and s > 0 then return s * 4 end
   end
 end
 
 -- cheapest place to buy one, and where
 local function buyPrice(id)
-  local a, v = ahPrice(id), vendorBuy(id)
+  local a, v = ahPrice(id), L.vendorBuy(id)
   if a and v then
     if v <= a then return v, "vendor" end
     return a, "ah"
@@ -344,7 +345,7 @@ local function buyPrice(id)
 end
 
 -- read every vendor you open, so its prices are known from then on
-local function readMerchant()
+function L.readMerchant()
   if not (GetMerchantNumItems and GetMerchantItemInfo and GetMerchantItemLink) then return end
   ProfessionWizardDB.vendor = ProfessionWizardDB.vendor or {}
   local n = GetMerchantNumItems() or 0
@@ -364,14 +365,14 @@ end
 -- Bags, bank, mail, alts
 ---------------------------------------------------------------------------
 local WANT = {}
-local function want(id) if id and id > 0 then WANT[id] = true end end
-local function buildWant()
+function L.want(id) if id and id > 0 then WANT[id] = true end end
+function L.buildWant()
   for k in pairs(WANT) do WANT[k] = nil end
   for pid, list in pairs(ns.RECIPES) do
     for _, t in ipairs(list) do
-      want(t[5])
+      L.want(t[5])
       local m = t[10] or {}
-      for i = 1, #m, 2 do want(m[i]) end
+      for i = 1, #m, 2 do L.want(m[i]) end
     end
   end
 end
@@ -401,7 +402,7 @@ local function slotInfo(bag, slot)
   end
 end
 
-local function scanBags(list)
+function L.scanBags(list)
   local out = {}
   for _, bag in ipairs(list) do
     for slot = 1, numSlots(bag) do
@@ -412,13 +413,13 @@ local function scanBags(list)
   return out
 end
 
-local function bagList()
+function L.bagList()
   local l = {}
   for b = 0, (NUM_BAG_SLOTS or 4) do l[#l + 1] = b end
   return l
 end
 
-local function bankList()
+function L.bankList()
   local l = { BANK_CONTAINER or -1 }
   local first = (NUM_BAG_SLOTS or 4) + 1
   for b = first, first + (NUM_BANKBAGSLOTS or 6) - 1 do l[#l + 1] = b end
@@ -429,7 +430,7 @@ end
 -- mailbox or bank is closing: by then they read as empty and would wipe what's saved
 local bankOpen, mailOpen, mailShown = false, false, false
 
-local function readInbox()
+function L.readInbox()
   local out = {}
   if not (GetInboxNumItems and GetInboxItem) then return out end
   local ok, n = pcall(GetInboxNumItems)
@@ -455,28 +456,28 @@ local function snapshot()
   -- Right after login and while logging out the game can report no skills and empty bags. Keep what we saw
   -- last instead of saving that (it wiped every character's bags and skills, and with them the crafter lists).
   if next(skills) == nil and old.skills then skills = old.skills end
-  local bags = scanBags(bagList())
+  local bags = L.scanBags(L.bagList())
   if numSlots(0) == 0 and old.bags then bags = old.bags end
   local me = {
     name = UnitName("player"), realm = GetRealmName(), faction = UnitFactionGroup("player"),
     skills = skills, time = time(), bags = bags, bank = old.bank or {}, bankTime = old.bankTime,
     mail = old.mail or {}, incoming = old.incoming or {}, mailTime = old.mailTime,
   }
-  if bankOpen then me.bank = scanBags(bankList()); me.bankTime = time() end
-  if mailOpen then me.mail = readInbox(); me.incoming = {}; me.mailTime = time() end
+  if bankOpen then me.bank = L.scanBags(L.bankList()); me.bankTime = time() end
+  if mailOpen then me.mail = L.readInbox(); me.incoming = {}; me.mailTime = time() end
   ProfessionWizardDB.chars[key] = me
   if saveGoals then pcall(saveGoals) end
 end
 
 -- Alts saved by GoldSense (and skills saved by SmithList) count too, so nothing has to be
 -- re-learned: whatever they saw more recently than Profession Wizard is taken over.
-local function filtered(t)
+function L.filtered(t)
   local out = {}
   for id, n in pairs(t or {}) do if WANT[id] then out[id] = n end end
   return out
 end
 
-local function importOthers()
+function L.importOthers()
   local me = myKey()
   local inv = GoldSenseDB and GoldSenseDB.inv
   if type(inv) == "table" then
@@ -485,14 +486,14 @@ local function importOthers()
         local key = name .. "-" .. realm
         local mine = ProfessionWizardDB.chars[key]
         if key == me and mine and type(c) == "table" and not mine.mailTime and c.mailAt then
-          mine.mail = filtered(c.mail); mine.mailTime = c.mailAt
+          mine.mail = L.filtered(c.mail); mine.mailTime = c.mailAt
         end
         if key ~= me and type(c) == "table" and (c.at or 0) > ((mine and mine.time) or 0) then
           mine = mine or { name = name, realm = realm, skills = {}, incoming = {} }
           mine.faction = c.faction or mine.faction
-          mine.bags = filtered(c.bags)
-          if c.bankAt or not mine.bank then mine.bank = filtered(c.bank); mine.bankTime = c.bankAt end
-          if c.mailAt or not mine.mail then mine.mail = filtered(c.mail); mine.mailTime = c.mailAt; mine.incoming = {} end
+          mine.bags = L.filtered(c.bags)
+          if c.bankAt or not mine.bank then mine.bank = L.filtered(c.bank); mine.bankTime = c.bankAt end
+          if c.mailAt or not mine.mail then mine.mail = L.filtered(c.mail); mine.mailTime = c.mailAt; mine.incoming = {} end
           mine.time = c.at
           ProfessionWizardDB.chars[key] = mine
         end
@@ -528,27 +529,27 @@ local function alts()
   return list
 end
 
-local function mailOf(c, id)
+function L.mailOf(c, id)
   if not (ProfessionWizardDB.mail and c) then return 0 end
   return ((c.mail and c.mail[id]) or 0) + ((c.incoming and c.incoming[id]) or 0)
 end
 
-local function ownMail(id) return mailOf(ProfessionWizardDB.chars and ProfessionWizardDB.chars[myKey()], id) end
+local function ownMail(id) return L.mailOf(ProfessionWizardDB.chars and ProfessionWizardDB.chars[myKey()], id) end
 
 local noAlts = false -- set while working out what this character alone still needs
-local function altCount(id)
+function L.altCount(id)
   if noAlts or not ProfessionWizardDB.alts then return 0, {} end
   local total, parts = 0, {}
   for _, c in ipairs(alts()) do
-    local m = mailOf(c, id)
+    local m = L.mailOf(c, id)
     local n = ((c.bags and c.bags[id]) or 0) + (ProfessionWizardDB.bank and ((c.bank and c.bank[id]) or 0) or 0) + m
     if n > 0 then total = total + n; parts[#parts + 1] = { name = c.name, n = n, mail = m, time = c.time } end
   end
   return total, parts
 end
 
-local function haveOf(id)
-  local a = altCount(id)
+function L.haveOf(id)
+  local a = L.altCount(id)
   return count(id) + ownMail(id) + a
 end
 
@@ -565,7 +566,7 @@ local function bestSkill(pid)
 end
 
 -- mail you send to your own characters counts on them straight away
-local function shortName(s)
+function L.shortName(s)
   s = (s or ""):gsub("%-.*$", "")
   local sep = Constants and Constants.CharacterNameSeparatorConsts and Constants.CharacterNameSeparatorConsts.CHARACTERNAME_SURNAME_SEPARATOR
   if sep and sep ~= "" then
@@ -576,7 +577,7 @@ local function shortName(s)
 end
 
 local outgoing
-local function noteOutgoing(recipient)
+function L.noteOutgoing(recipient)
   local items, any = {}, false
   if not GetSendMailItem then return end
   for i = 1, (ATTACHMENTS_MAX_SEND or 12) do
@@ -586,13 +587,13 @@ local function noteOutgoing(recipient)
   outgoing = any and { to = recipient, items = items } or nil
 end
 
-local function deliverOutgoing()
+function L.deliverOutgoing()
   if not outgoing then return end
-  local who = shortName(outgoing.to)
+  local who = L.shortName(outgoing.to)
   local realm, faction = GetRealmName(), UnitFactionGroup("player")
   local target, targetKey
   for k, c in pairs(ProfessionWizardDB.chars) do
-    if c.realm == realm and c.faction == faction and shortName(c.name) == who then target, targetKey = c, k end
+    if c.realm == realm and c.faction == faction and L.shortName(c.name) == who then target, targetKey = c, k end
   end
   if target and targetKey ~= myKey() then
     target.incoming = target.incoming or {}
@@ -612,7 +613,7 @@ end
 -- (materials - what the vendor pays for the result) / chance of a point.
 -- Materials are bought or made, whichever is cheaper (bars you can smelt, bolts you can weave...).
 ---------------------------------------------------------------------------
-local function producers(id, pid)
+function L.producers(id, pid)
   local out = {}
   for _, r in ipairs(recipes(pid).byCreates[id] or {}) do out[#out + 1] = r end
   if pid ~= MINING then
@@ -622,25 +623,25 @@ local function producers(id, pid)
 end
 
 -- can this be made on the way, as a material for something else?
-local function canMake(r, ctx)
+function L.canMake(r, ctx)
   if r.prof == MINING then return ctx.mining >= r.learn end
   if r.prof ~= ctx.pid then return false end
   if isKnown(r) then return true end
   return r.trainer and r.learn <= ctx.skill
 end
 
-local function unitCost(id, ctx, depth)
+function L.unitCost(id, ctx, depth)
   local m = ctx.memo[id]
   if m ~= nil then return m or nil end
   ctx.memo[id] = false -- stops loops
   local best = buyPrice(id)
   local via
   if depth < 3 then
-    for _, r in ipairs(producers(id, ctx.pid)) do
-      if canMake(r, ctx) then
+    for _, r in ipairs(L.producers(id, ctx.pid)) do
+      if L.canMake(r, ctx) then
         local c = 0
         for _, mt in ipairs(r.mats) do
-          local u = unitCost(mt[1], ctx, depth + 1)
+          local u = L.unitCost(mt[1], ctx, depth + 1)
           if not u then c = nil; break end
           c = c + u * mt[2]
         end
@@ -661,7 +662,7 @@ local function newCtx(pid, skill)
 end
 
 -- may this recipe be used for skill-ups, and what do its plans cost?
-local function usable(r, from)
+function L.usable(r, from)
   if r.creates == 0 and r.prof ~= 333 then return false end
   if isKnown(r) then return true, 0 end
   if r.trainer then return true, 0 end
@@ -672,23 +673,23 @@ local function usable(r, from)
   return false
 end
 
-local function findRoute(pid, from, to)
+function L.findRoute(pid, from, to)
   local ctx = newCtx(pid, from)
   local cands, waiting, unpriced = {}, 0, {}
   for _, r in ipairs(recipes(pid).list) do
     if r.g > from and r.learn < to then
-      local ok, plansCost, where = usable(r, from)
+      local ok, plansCost, where = L.usable(r, from)
       if ok then
         local c = 0
         for _, mt in ipairs(r.mats) do
-          local u = unitCost(mt[1], ctx, 0)
+          local u = L.unitCost(mt[1], ctx, 0)
           if not u then c = nil; unpriced[mt[1]] = (unpriced[mt[1]] or 0) + 1; break end
           c = c + u * mt[2]
         end
         if c then
           local back = 0
           if r.creates > 0 then
-            local sp = sellPrice(r.creates)
+            local sp = L.sellPrice(r.creates)
             if sp then back = sp * r.made else waiting = waiting + 1 end
           end
           cands[#cands + 1] = { r = r, mats = c, back = back, net = c - back, plans = plansCost or 0, where = where }
@@ -702,13 +703,13 @@ local function findRoute(pid, from, to)
   for s = from, to - 1 do
     local best, bestScore
     for _, cd in ipairs(cands) do
-      local p = chance(cd.r, s)
+      local p = L.chance(cd.r, s)
       if p >= MIN_CHANCE then
         local score = (cd.net + PER_CRAFT) / p
         if cd.plans > 0 and not bought[cd.r.spell] then
           local span = 0
           for t = s, to - 1 do
-            if chance(cd.r, t) >= MIN_CHANCE then span = span + 1 else break end
+            if L.chance(cd.r, t) >= MIN_CHANCE then span = span + 1 else break end
           end
           score = score + cd.plans / math.max(1, span)
         end
@@ -741,14 +742,14 @@ local function routeStore()
 end
 
 local MILESTONES = { 75, 150, 225, 300 }
-local function nextMilestone(cur)
+function L.nextMilestone(cur)
   for _, m in ipairs(MILESTONES) do if m > cur then return m end end
   return 300
 end
 
 local function targetFor(pid, cur)
   local t = ProfessionWizardDB.targets and ProfessionWizardDB.targets[myKey() .. ":" .. pid]
-  if not t or t <= cur then t = nextMilestone(cur) end
+  if not t or t <= cur then t = L.nextMilestone(cur) end
   return math.min(300, t)
 end
 
@@ -761,7 +762,7 @@ local function routeFor(pid, cur, target, force)
   local retry = not stale and r.waiting and r.waiting > 0 and (r.retries or 0) < 3 and time() - (r.time or 0) >= 2
   if stale or retry then
     local tries = retry and (r.retries or 0) + 1 or 0
-    r = findRoute(pid, cur, math.max(target, nextMilestone(cur)))
+    r = L.findRoute(pid, cur, math.max(target, L.nextMilestone(cur)))
     r.retries = tries
     store[pid] = r
   end
@@ -779,7 +780,7 @@ local function plan(route, cur, target)
       if r then
         local exp = 0
         for s = a, b - 1 do
-          local p = chance(r, s)
+          local p = L.chance(r, s)
           if p > 0 then exp = exp + 1 / p end
         end
         local crafts = math.ceil(exp * (1 + (ProfessionWizardDB.buffer or 0) / 100) - 0.001)
@@ -800,16 +801,16 @@ end
 ---------------------------------------------------------------------------
 -- Materials: what the steps need, what you have, what to make on the way
 ---------------------------------------------------------------------------
-local function newRow(id, n)
+function L.newRow(id, n)
   local own, mail = count(id), ownMail(id)
-  local onAlts, parts = altCount(id)
+  local onAlts, parts = L.altCount(id)
   return { id = id, need = n, own = own, mail = mail, alts = onAlts, parts = parts, have = own + mail + onAlts }
 end
 
 -- a one-material recipe you can do with what you own (ore > bars, cloth > bolts, stone > grinding stones)
-local function fromOwned(id, ctx)
-  for _, r in ipairs(producers(id, ctx.pid)) do
-    if #r.mats == 1 and canMake(r, ctx) then return r end
+function L.fromOwned(id, ctx)
+  for _, r in ipairs(L.producers(id, ctx.pid)) do
+    if #r.mats == 1 and L.canMake(r, ctx) then return r end
   end
 end
 
@@ -822,8 +823,8 @@ local function materials(steps, ctx)
       if st.r.creates > 0 then produced[st.r.creates] = (produced[st.r.creates] or 0) + st.crafts * st.r.made end
     end
   end
-  for _, st in ipairs(steps) do if st.r then unitCost(st.r.creates, ctx, 0) end end
-  for id in pairs(base) do unitCost(id, ctx, 0) end
+  for _, st in ipairs(steps) do if st.r then L.unitCost(st.r.creates, ctx, 0) end end
+  for id in pairs(base) do L.unitCost(id, ctx, 0) end
 
   local extra, reserved, rows = {}, {}, nil
   for _ = 1, 6 do
@@ -832,17 +833,17 @@ local function materials(steps, ctx)
     for _, id in ipairs(order) do
       local n = (base[id] or 0) + (extra[id] or 0)
       if n > 0 then
-        local row = newRow(id, n)
+        local row = L.newRow(id, n)
         row.have = math.max(0, row.have - (reserved[id] or 0))
         row.reserved = reserved[id]
         row.crafted = math.min(produced[id] or 0, n)
         local left = n - row.have - row.crafted
         local makes = 0
         -- turn what you own into this first
-        local r1 = left > 0 and fromOwned(id, ctx)
+        local r1 = left > 0 and L.fromOwned(id, ctx)
         if r1 then
           local src, k = r1.mats[1][1], r1.mats[1][2]
-          local srcHave = math.max(0, haveOf(src) - (reserved[src] or 0) - (base[src] or 0))
+          local srcHave = math.max(0, L.haveOf(src) - (reserved[src] or 0) - (base[src] or 0))
           local crafts = math.min(math.floor(srcHave / k), math.ceil(left / r1.made))
           if crafts > 0 then
             makes = crafts
@@ -885,7 +886,7 @@ end
 -- Goals: what each crafter still needs, counting only what it has itself.
 -- Your alts read these at their mailbox and send exactly that.
 ---------------------------------------------------------------------------
-local function fullName()
+function L.fullName()
   local ok, name, surname = pcall(UnitNameUnmodified or UnitName, "player")
   if not ok or not name then return UnitName("player") end
   if type(surname) ~= "string" or surname == "" then return name end
@@ -894,7 +895,7 @@ local function fullName()
   return name .. sep .. surname
 end
 
-local function goalFor(pid)
+function L.goalFor(pid)
   local rank = readSkill(pid)
   if not rank or rank >= 300 then return nil end
   local target = targetFor(pid, rank)
@@ -929,7 +930,7 @@ local function goalFor(pid)
     end
   end
   return {
-    owner = myKey(), pid = pid, name = UnitName("player"), full = fullName(), realm = GetRealmName(),
+    owner = myKey(), pid = pid, name = UnitName("player"), full = L.fullName(), realm = GetRealmName(),
     faction = UnitFactionGroup("player"), skill = rank, target = target, needs = needs, alt = alt, prod = prod,
     rows = rowsOut, steps = stepsOut, time = time(), sent = {},
   }
@@ -946,7 +947,7 @@ saveGoals = function()
   end
   for pid in pairs(skills) do
     if not PROF[pid].gather then
-      local g = goalFor(pid)
+      local g = L.goalFor(pid)
       if g then ProfessionWizardDB.goals[me .. ":" .. pid] = g end
     end
   end
@@ -959,17 +960,17 @@ local tsOpen, tsProf, tsMode, recipeCache = false, nil, nil, nil
 local refresh -- set further down
 local job     -- the batch being crafted: { name, label, total, done, st, et, casting, stopped }
 
-local function itemFromLink(link) return link and tonumber(link:match("item:(%d+)")) end
+function L.itemFromLink(link) return link and tonumber(link:match("item:(%d+)")) end
 
-local function windowProf()
+function L.windowProf()
   if tsMode == "craft" then
     if GetCraftDisplaySkillLine then
       local ok, name = pcall(GetCraftDisplaySkillLine)
-      if ok then return profFromName(name) end
+      if ok then return L.profFromName(name) end
     end
     if GetCraftSkillLine then
       local ok, name = pcall(GetCraftSkillLine, 1)
-      if ok then return profFromName(name) end
+      if ok then return L.profFromName(name) end
     end
     return nil
   end
@@ -977,19 +978,19 @@ local function windowProf()
     local ok, info = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
     if ok and info then
       if info.professionID and PROF[info.professionID] then return info.professionID end
-      local pid = profFromName(info.professionName)
+      local pid = L.profFromName(info.professionName)
       if pid then return pid end
     end
   end
   if GetTradeSkillLine then
     local ok, name = pcall(GetTradeSkillLine)
-    if ok then return profFromName(name) end
+    if ok then return L.profFromName(name) end
   end
 end
 
 local KIND = { optimal = "orange", medium = "yellow", easy = "green", trivial = "grey", difficult = "orange" }
 
-local function buildRecipes()
+function L.buildRecipes()
   local byItem, byName, all = {}, {}, {}
   local function add(r, id)
     if id then byItem[id] = r end
@@ -1013,7 +1014,7 @@ local function buildRecipes()
     for i = 1, (ok and n or 0) do
       local name, kind, avail = GetTradeSkillInfo(i)
       if name and kind ~= "header" and kind ~= "subheader" then
-        local id = GetTradeSkillItemLink and itemFromLink(GetTradeSkillItemLink(i))
+        local id = GetTradeSkillItemLink and L.itemFromLink(GetTradeSkillItemLink(i))
         add({ index = i, name = name, avail = avail or 0, kind = KIND[kind] }, id)
       end
     end
@@ -1028,7 +1029,7 @@ local function buildRecipes()
           local okO, out = pcall(C_TradeSkillUI.GetRecipeOutputItemData, rid)
           id = okO and out and out.itemID
         end
-        if not id and C_TradeSkillUI.GetRecipeItemLink then id = itemFromLink(C_TradeSkillUI.GetRecipeItemLink(rid)) end
+        if not id and C_TradeSkillUI.GetRecipeItemLink then id = L.itemFromLink(C_TradeSkillUI.GetRecipeItemLink(rid)) end
         local kind = type(info.difficulty) == "string" and KIND[info.difficulty] or nil
         add({ recipeID = rid, spell = rid, name = info.name, avail = info.numAvailable or 0, kind = kind }, id)
       end
@@ -1039,12 +1040,12 @@ end
 
 local function getRecipes()
   if not tsOpen then return nil end
-  recipeCache = recipeCache or buildRecipes()
+  recipeCache = recipeCache or L.buildRecipes()
   return recipeCache
 end
 
 -- how many you can make from what's in your bags (the game's own count reads 0 on some windows)
-local function bagMakes(r)
+function L.bagMakes(r)
   local n
   for _, m in ipairs(r.mats) do
     local k = math.floor(rawCount(m[1], false) / math.max(1, m[2]))
@@ -1057,7 +1058,7 @@ local findRecipeRaw
 -- the recipe in the open window for one of ours
 local function findRecipe(r)
   local w = findRecipeRaw(r)
-  if w then w.avail = math.max(w.avail or 0, bagMakes(r)) end
+  if w then w.avail = math.max(w.avail or 0, L.bagMakes(r)) end
   return w
 end
 
@@ -1075,7 +1076,7 @@ findRecipeRaw = function(r)
 end
 
 -- which of ours is this window line?
-local function matchData(w, pid, itemID)
+function L.matchData(w, pid, itemID)
   local list = recipes(pid)
   if w.spell and list.bySpell[w.spell] then return list.bySpell[w.spell] end
   if itemID and list.byCreates[itemID] then
@@ -1088,12 +1089,12 @@ local function matchData(w, pid, itemID)
 end
 
 -- remember what's learned and fix colors that differ from the shipped data
-local function learnWindow()
+function L.learnWindow()
   if not tsOpen or not tsProf then return end
   local rc = getRecipes()
   if not rc then return end
   local rank = readSkill(tsProf)
-  local known = knownSet()
+  local known = L.knownSet()
   ProfessionWizardDB.fix = ProfessionWizardDB.fix or {}
   ProfessionWizardDB.seen = ProfessionWizardDB.seen or {}
   ProfessionWizardDB.seen[myKey()] = ProfessionWizardDB.seen[myKey()] or {}
@@ -1102,7 +1103,7 @@ local function learnWindow()
   for id, w in pairs(rc.byItem) do itemOf[w] = id end
   local fixed = 0
   for _, w in ipairs(rc.all) do
-    local r = matchData(w, tsProf, itemOf[w])
+    local r = L.matchData(w, tsProf, itemOf[w])
     if r then
       known[r.spell] = true
       if rank and w.kind then
@@ -1391,7 +1392,7 @@ local function searchAH(names)
   if not ok then Print("open the auction house first, then click again.") end
 end
 
-local function makeRow(i)
+function L.makeRow(i)
   local r = CreateFrame("Button", nil, frame)
   r:SetSize(W - PAD * 2, ROW_H)
   r.hl = r:CreateTexture(nil, "BACKGROUND"); r.hl:SetAllPoints()
@@ -1456,7 +1457,7 @@ local function makeRow(i)
   return r
 end
 
-local function makeStep(i)
+function L.makeStep(i)
   local s = scheme()
   local l = CreateFrame("Frame", nil, frame)
   l:SetSize(W - PAD * 2, STEP_H + 4)
@@ -1550,13 +1551,13 @@ end
 
 -- Where the window goes: where this character last dragged it; until it has, next to the open profession
 -- window (or the middle of the screen when none is open).
-local function savePos()
+function L.savePos()
   local point, _, rel, x, y = frame:GetPoint()
   ProfessionWizardDB.posChar = ProfessionWizardDB.posChar or {}
   ProfessionWizardDB.posChar[myKey()] = { point = point, rel = rel, x = x, y = y }
 end
 
-local function profWindow()
+function L.profWindow()
   for _, n in ipairs({ "TradeSkillFrame", "CraftFrame", "ProfessionsFrame" }) do
     local f = _G[n]
     if f and f.IsShown and f:IsShown() and f:GetRight() and f:GetTop() then return f end
@@ -1571,7 +1572,7 @@ local function placeFrame()
     frame:SetPoint(p.point, UIParent, p.rel or p.point, p.x or 0, p.y or 0)
     return
   end
-  local pf = profWindow()
+  local pf = L.profWindow()
   if not pf then frame:SetPoint("CENTER", -200, 40); return end
   local k = pf:GetEffectiveScale() / frame:GetEffectiveScale()
   local left, right, top = pf:GetLeft() * k, pf:GetRight() * k, pf:GetTop() * k
@@ -1585,7 +1586,7 @@ end
 
 -- The minimap button (LibDBIcon: drag it around the minimap, minimap button bags collect it; on by
 -- default, ProfessionWizardDB.minimap keeps its place and whether it's hidden).
-local function setupMinimap()
+function L.setupMinimap()
   local LDB = LibStub and LibStub("LibDataBroker-1.1", true)
   local DBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
   if not (LDB and DBIcon) or DBIcon:IsRegistered("ProfessionWizard") then return end
@@ -1627,7 +1628,7 @@ local function build()
     end
     self:StartMoving()
   end)
-  frame:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); savePos(); refresh() end)
+  frame:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); L.savePos(); refresh() end)
   frame:SetFrameStrata("HIGH")
   tinsert(UISpecialFrames, "ProfessionWizardFrame")
 
@@ -1860,7 +1861,7 @@ local function build()
 
   frame.stepsHead = text(frame, 11, ar, ag, ab, 0.9)
   frame.stepsHead:SetText("CRAFTS")
-  for i = 1, MAX_STEPS do stepLines[i] = makeStep(i) end
+  for i = 1, MAX_STEPS do stepLines[i] = L.makeStep(i) end
 
   frame.matHead = text(frame, 11, ar, ag, ab, 0.9)
   frame.matHead:SetText("MATERIALS")
@@ -1868,7 +1869,7 @@ local function build()
   frame.colHave = text(frame, 11, 1, 1, 1, 0.4); frame.colHave:SetText("HAVE"); frame.colHave:SetJustifyH("RIGHT"); frame.colHave:SetWidth(W_HAVE)
   frame.colStat = text(frame, 11, 1, 1, 1, 0.4); frame.colStat:SetText("STILL NEED")
 
-  for i = 1, MAX_ROWS do rows[i] = makeRow(i) end
+  for i = 1, MAX_ROWS do rows[i] = L.makeRow(i) end
   frame.more = text(frame, 11, 1, 1, 1, 0.45)
 
   frame.foot = text(frame, 11, 1, 1, 1, 0.55)
@@ -1907,7 +1908,7 @@ local function build()
   local down = GetCVarBool and GetCVarBool("ActionButtonUseKeyDown")
   smeltBtn:RegisterForClicks(down and "AnyDown" or "AnyUp")
   smeltBtn:SetAttribute("type", "spell")
-  smeltBtn:SetAttribute("spell", spellName(2656) or "Smelting")
+  smeltBtn:SetAttribute("spell", L.spellName(2656) or "Smelting")
   tip(smeltBtn, "Open smelting", "Opens your smelting window. Then SMELT ALL turns the ore on the list into bars.")
   smeltBtn:Hide()
 
@@ -1940,7 +1941,7 @@ local function build()
 end
 
 -- every saved list from your other characters on this realm and faction, newest first
-local function sheetList()
+function L.sheetList()
   local list = {}
   local realm, faction, me = GetRealmName(), UnitFactionGroup("player"), myKey()
   for k, g in pairs(ProfessionWizardDB.goals or {}) do
@@ -1969,7 +1970,7 @@ toggleMenu = function()
   if m:IsShown() then m:Hide(); return end
   local entries = {}
   if shownProf() then entries[#entries + 1] = { label = "YOUR OWN LIST", key = false } end
-  for _, g in ipairs(sheetList()) do
+  for _, g in ipairs(L.sheetList()) do
     entries[#entries + 1] = { label = string.format("%s  %s %d>%d  ·  %s", (g.name or "?"):upper(),
       PROF[g.pid] and PROF[g.pid].short or "?", g.skill or 0, g.target or 0, ago(g.time)), key = g.key }
   end
@@ -2013,7 +2014,7 @@ placeSecure = function(btn, x, y)
   btn:Show()
 end
 
-local function hideSecure(btn)
+function L.hideSecure(btn)
   if btn and not (InCombatLockdown and InCombatLockdown()) then btn:Hide() end
 end
 
@@ -2085,8 +2086,8 @@ local function scanList(pid, from, to)
     seen[id] = true
     if not ns.VENDOR_ITEMS[id] then list[#list + 1] = id end
     if depth < 2 then
-      for _, r in ipairs(producers(id, pid)) do
-        if canMake(r, ctx) then
+      for _, r in ipairs(L.producers(id, pid)) do
+        if L.canMake(r, ctx) then
           for _, m in ipairs(r.mats) do add(m[1], depth + 1) end
         end
       end
@@ -2110,7 +2111,7 @@ end
 --   "ok"    fresh enough
 -- plus whether Auctionator is installed and how old the newest price is (days). Cached for a few seconds.
 local priceCache = {}
-local function auctionatorAge(id)
+function L.auctionatorAge(id)
   local a = Auctionator and Auctionator.API and Auctionator.API.v1
   if not (a and a.GetAuctionAgeByItemID) then return nil end
   local ok, d = pcall(a.GetAuctionAgeByItemID, CALLER, id)
@@ -2129,7 +2130,7 @@ local function priceState(pid, cur, target)
     total = total + 1
     local o = own[id]
     local ageO = o and o.p and o.t and (time() - o.t) / 86400
-    local ageA = auctionatorPrice(id) and (auctionatorAge(id) or 0)
+    local ageA = L.auctionatorPrice(id) and (L.auctionatorAge(id) or 0)
     local age = (ageO and ageA and math.min(ageO, ageA)) or ageO or ageA
     if age then
       priced = priced + 1
@@ -2181,7 +2182,7 @@ local function finishScan(stopped)
   if refresh then refresh() end
 end
 
-local function readResults()
+function L.readResults()
   if not scan or not scan.waiting then return end
   local n = (GetNumAuctionItems and GetNumAuctionItems("list")) or 0
   local units, qty = {}, 0
@@ -2194,7 +2195,7 @@ local function readResults()
     end
   end
   table.sort(units, function(a, b) return a.p < b.p end)
-  local st = scanStore()
+  local st = L.scanStore()
   if #units == 0 then
     st[scan.id] = { t = time() } -- none listed right now
     scan.none = scan.none + 1
@@ -2247,9 +2248,9 @@ startScan = function()
   if not pid then return end
   local cur = readSkill(pid) or 1
   local target = targetFor(pid, cur)
-  local st = scanStore()
+  local st = L.scanStore()
   local list = {}
-  for _, id in ipairs(scanList(pid, cur, math.max(target, nextMilestone(cur)))) do
+  for _, id in ipairs(scanList(pid, cur, math.max(target, L.nextMilestone(cur)))) do
     local e = st[id]
     if not e or time() - e.t > SCAN_FRESH then list[#list + 1] = id end
   end
@@ -2258,7 +2259,7 @@ startScan = function()
     if not GetItemInfo(id) and C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
   end
   scan = { list = list, i = 0, total = #list, pid = pid, found = 0, none = 0, tries = {} }
-  Print(string.format("scanning %d items for %s %d-%d.", #list, profName(pid), cur, math.max(target, nextMilestone(cur))))
+  Print(string.format("scanning %d items for %s %d-%d.", #list, profName(pid), cur, math.max(target, L.nextMilestone(cur))))
   scanLabel()
   scanFrame:Show()
 end
@@ -2268,7 +2269,7 @@ local function onAuction(event)
   elseif event == "AUCTION_HOUSE_CLOSED" then ahOpen = false
   elseif event == "AUCTION_ITEM_LIST_UPDATE" and scan and scan.waiting and not scan.reading then
     scan.reading = true
-    C_Timer.After(0.2, function() if scan then scan.reading = false; readResults() end end)
+    C_Timer.After(0.2, function() if scan then scan.reading = false; L.readResults() end end)
   end
 end
 
@@ -2293,7 +2294,7 @@ local function renderSheet(g, warm, green, red, dim)
       l:ClearAllPoints(); l:SetPoint("TOPLEFT", PAD, -y); y = y + STEP_H
       l.st = r and { r = r } or nil
       l.range:SetText(st.from .. "-" .. st.to)
-      l.name:SetText(r and (colorAt(r, st.from) .. r.name .. "|r") or (red .. "no recipe found|r"))
+      l.name:SetText(r and (L.colorAt(r, st.from) .. r.name .. "|r") or (red .. "no recipe found|r"))
       l.crafts:SetText(r and ("x" .. st.crafts) or "")
       l.info:SetText(""); l.go:Hide(); l.amt:Hide()
       l:Show()
@@ -2319,7 +2320,7 @@ local function renderSheet(g, warm, green, red, dim)
     local pr = g.prod and g.prod[row.id]
     if pr then left = left - math.floor((g.sent[pr[1]] or 0) * pr[2]) end
     if (row.missing or 0) > 0 then
-      local it = newRow(row.id, math.max(0, left))
+      local it = L.newRow(row.id, math.max(0, left))
       -- yours here: bags and bank, plus mail and auction house buys on the way (send them once looted),
       -- plus finished items it would make itself (your bars cover the ore for them)
       it.mine = rawCount(row.id, true) + ownMail(row.id)
@@ -2387,11 +2388,11 @@ local function renderSheet(g, warm, green, red, dim)
   if toSend > 0 then foot = foot .. "\nThe mailbox panel sends what you have in one click." end
   frame.foot:SetText(foot)
   placeFooter(y, toBuy > 0, nil, true)
-  hideSecure(openBtn)
+  L.hideSecure(openBtn)
 end
 
 -- order: things to make first, then missing, then done
-local function sortRows(list)
+function L.sortRows(list)
   local function rank(r)
     if r.make then return 0 end
     if r.missing > 0 then return 1 end
@@ -2511,7 +2512,7 @@ refresh = function()
   frame.lists:SetActive(viewing and true or false)
   -- a character without a crafting profession shows the newest saved list instead
   if not viewing and not pid then
-    local first = sheetList()[1]
+    local first = L.sheetList()[1]
     if first then viewing = first.key end
   end
   if viewing then
@@ -2541,7 +2542,7 @@ refresh = function()
     for _, c in ipairs(frame.ctrl) do c:Hide() end
     for _, c in ipairs(frame.milestones) do c:Hide() end
     placeSmelt(nil, 0, false, true)
-    hideSecure(openBtn)
+    L.hideSecure(openBtn)
   end
 
   if not pid then
@@ -2594,7 +2595,7 @@ refresh = function()
     local rank = (cap < 75 and "Journeyman (level 10)") or (cap < 150 and "Expert (level 20)") or (cap < 225 and "Artisan (level 35)") or "the next rank"
     sub = sub .. "  ·  " .. warm .. "your cap is " .. cap .. ": train " .. rank .. "|r"
   end
-  if not seenProf(pid) then sub = sub .. "  ·  " .. warm .. "open your " .. profName(pid) .. " window once|r" end
+  if not L.seenProf(pid) then sub = sub .. "  ·  " .. warm .. "open your " .. profName(pid) .. " window once|r" end
   frame.sub:SetText(sub)
 
   -- steps
@@ -2638,12 +2639,12 @@ refresh = function()
         l.go:Hide(); l.amt:Hide()
       else
         local r = st.r
-        l.name:SetText(colorAt(r, st.from) .. r.name .. "|r")
+        l.name:SetText(L.colorAt(r, st.from) .. r.name .. "|r")
         l.crafts:SetText("x" .. st.crafts)
         -- cost per craft from today's prices
         local mc = 0
-        for _, m in ipairs(r.mats) do mc = mc + (unitCost(m[1], ctx, 0) or 0) * m[2] end
-        local back = r.creates > 0 and (sellPrice(r.creates) or 0) * r.made or 0
+        for _, m in ipairs(r.mats) do mc = mc + (L.unitCost(m[1], ctx, 0) or 0) * m[2] end
+        local back = r.creates > 0 and (L.sellPrice(r.creates) or 0) * r.made or 0
         st.matCost, st.back = mc, back
         matTotal = matTotal + mc * st.crafts
         vendorBack = vendorBack + back * st.crafts
@@ -2704,7 +2705,7 @@ refresh = function()
     openBtn.text:SetText("OPEN " .. PROF[pid].short)
     placeSecure(openBtn, W - PAD - 116, openY)
   elseif not openY then
-    hideSecure(openBtn)
+    L.hideSecure(openBtn)
   end
 
   -- materials
@@ -2716,7 +2717,7 @@ refresh = function()
   y = y + 18
 
   local list = (#steps > 0) and materials(steps, ctx) or {}
-  sortRows(list)
+  L.sortRows(list)
   frame.list = list
   local cost, missingKinds = 0, 0
   local toSmelt = {}
@@ -2810,7 +2811,7 @@ local MAX_ATTACH = ATTACHMENTS_MAX_SEND or 12
 local mp, mpRows, mpChips, busy = nil, {}, {}, false
 local mpPick
 
-local function bagStacks(id)
+function L.bagStacks(id)
   local out = {}
   for bag = 0, (NUM_BAG_SLOTS or 4) do
     for slot = 1, numSlots(bag) do
@@ -2822,14 +2823,14 @@ local function bagStacks(id)
   return out
 end
 
-local function bagCount(id)
+function L.bagCount(id)
   local n = 0
-  for _, st in ipairs(bagStacks(id)) do n = n + st.count end
+  for _, st in ipairs(L.bagStacks(id)) do n = n + st.count end
   return n
 end
 
 -- goals of your other characters on this realm and faction, newest first
-local function otherGoals()
+function L.otherGoals()
   local list = {}
   local realm, faction, me = GetRealmName(), UnitFactionGroup("player"), myKey()
   for k, g in pairs(ProfessionWizardDB.goals or {}) do
@@ -2839,7 +2840,7 @@ local function otherGoals()
   return list
 end
 
-local function sendPlan(g)
+function L.sendPlan(g)
   local items = {}
   g.sent = g.sent or {}
   for id, n in pairs(g.needs or {}) do
@@ -2851,20 +2852,20 @@ local function sendPlan(g)
     if pr and left > 0 then
       left = left - math.floor((g.sent[pr[1]] or 0) * pr[2])
       local made = math.min(math.ceil(left / math.max(pr[2], 0.0001)), pr[3] - (g.sent[pr[1]] or 0))
-      local give = math.max(0, math.min(made, bagCount(pr[1])))
+      local give = math.max(0, math.min(made, L.bagCount(pr[1])))
       if give > 0 then
         items[#items + 1] = { id = pr[1], n = give, bank = 0, raw = true }
         left = left - math.ceil(give * pr[2])
       end
     end
     if left > 0 then
-      local give = math.min(left, bagCount(id))
+      local give = math.min(left, L.bagCount(id))
       local bankMore = math.max(0, math.min(left - give, rawCount(id, true) - rawCount(id, false)))
       if give > 0 or bankMore > 0 then items[#items + 1] = { id = id, n = give, bank = bankMore } end
       left = left - give
       if left > 0 and alt then
         local want_ = math.ceil(left * alt[2])
-        local o = math.min(want_, bagCount(alt[1]))
+        local o = math.min(want_, L.bagCount(alt[1]))
         if o > 0 then items[#items + 1] = { id = alt[1], n = o, bank = 0, raw = true } end
       end
     end
@@ -2873,11 +2874,11 @@ local function sendPlan(g)
   return items
 end
 
-local function attachQueue(items)
+function L.attachQueue(items)
   local q = {}
   for _, it in ipairs(items) do
     local left = it.n
-    for _, st in ipairs(bagStacks(it.id)) do
+    for _, st in ipairs(L.bagStacks(it.id)) do
       if left <= 0 then break end
       local take = math.min(left, st.count)
       q[#q + 1] = { bag = st.bag, slot = st.slot, count = take, whole = (take == st.count) }
@@ -2887,7 +2888,7 @@ local function attachQueue(items)
   return q
 end
 
-local function findToBox()
+function L.findToBox()
   if GoldSense and GoldSense.FindMailToBox then
     local ok, box = pcall(GoldSense.FindMailToBox)
     if ok and box then return box end
@@ -2913,18 +2914,18 @@ end
 
 local mpRefresh
 
-local function chosenGoal()
-  local list = otherGoals()
+function L.chosenGoal()
+  local list = L.otherGoals()
   for _, g in ipairs(list) do if g.key == mpPick then return g, list end end
   return list[1], list
 end
 
 local function sendNow()
   if busy then return end
-  local g = chosenGoal()
+  local g = L.chosenGoal()
   if not g then return end
   if InCombatLockdown and InCombatLockdown() then Print("can't send mail in combat."); return end
-  local queue = attachQueue(sendPlan(g))
+  local queue = L.attachQueue(L.sendPlan(g))
   if #queue == 0 then return end
   if _G.SendMailFrame and not _G.SendMailFrame:IsShown() then
     if _G.MailFrameTab2 and _G.MailFrameTab2.Click then _G.MailFrameTab2:Click()
@@ -2942,7 +2943,7 @@ local function sendNow()
   local subject = "Profession Wizard: " .. profName(g.pid)
   local i = 0
   local function finish()
-    local box = findToBox()
+    local box = L.findToBox()
     if box and box.SetText then box:SetText(g.full or g.name) end
     local subj = _G.SendMailSubjectEditBox
     if subj and subj.SetText then subj:SetText(subject) end
@@ -2962,7 +2963,7 @@ local function sendNow()
   step()
 end
 
-local function mpMakeRow()
+function L.mpMakeRow()
   local r = CreateFrame("Frame", nil, mp)
   r:SetSize(MP_W - MP_PAD * 2, MP_ROW)
   r.icon = r:CreateTexture(nil, "ARTWORK"); r.icon:SetSize(16, 16); r.icon:SetPoint("LEFT", 0, 0)
@@ -2994,7 +2995,7 @@ local function mpBuild()
   end
   mp.title = text(mp, 12, 1, 1, 1, 0.95); mp.title:SetWidth(MP_W - MP_PAD * 2)
   mp.sub = text(mp, 11, 1, 1, 1, 0.5); mp.sub:SetWidth(MP_W - MP_PAD * 2)
-  for i = 1, MP_ROWS do mpRows[i] = mpMakeRow() end
+  for i = 1, MP_ROWS do mpRows[i] = L.mpMakeRow() end
   mp.note = text(mp, 11, s.warm[1], s.warm[2], s.warm[3], 0.85); mp.note:SetWidth(MP_W - MP_PAD * 2)
   mp.note:SetWordWrap(true)
   mp.send = chip(mp, "FILL MAIL", MP_W - MP_PAD * 2)
@@ -3016,7 +3017,7 @@ local function mpBuild()
 end
 
 -- next to the mail window; when another addon's panel is showing there (GoldSense's alt list), next to that
-local function mpPlace()
+function L.mpPlace()
   mp:ClearAllPoints()
   local other = _G.GoldSenseMailAlts
   if other and other:IsShown() then
@@ -3027,16 +3028,16 @@ local function mpPlace()
 end
 
 -- only on the Send Mail tab: open with it, close with it
-local function sendTabShown()
+function L.sendTabShown()
   return _G.SendMailFrame and _G.SendMailFrame:IsShown() and _G.MailFrame and _G.MailFrame:IsShown()
 end
 
 mpRefresh = function()
   if not mp then mpBuild() end
   if not mp then return end
-  local g, list = chosenGoal()
-  if not g or not sendTabShown() then mp:Hide(); return end
-  mpPlace()
+  local g, list = L.chosenGoal()
+  if not g or not L.sendTabShown() then mp:Hide(); return end
+  L.mpPlace()
   mp:Show()
   local y = 28
   -- one chip per crafter goal when there's more than one
@@ -3059,7 +3060,7 @@ mpRefresh = function()
   mp.sub:ClearAllPoints(); mp.sub:SetPoint("TOPLEFT", MP_PAD, -y)
   mp.sub:SetText("list from " .. ago(g.time))
   y = y + 18
-  local items = sendPlan(g)
+  local items = L.sendPlan(g)
   local count_, bankMore = 0, 0
   for i, r in ipairs(mpRows) do
     local it = items[i]
@@ -3075,7 +3076,7 @@ mpRefresh = function()
     end
     if it then bankMore = bankMore + (it.bank or 0) end
   end
-  local queue = attachQueue(items)
+  local queue = L.attachQueue(items)
   local mails = math.ceil(#queue / MAX_ATTACH)
   local note = ""
   local filled = false
@@ -3127,7 +3128,7 @@ local function onWindowOpen(mode)
   local tries = 0
   local function go()
     if not tsOpen then return end
-    tsProf = windowProf()
+    tsProf = L.windowProf()
     if not tsProf then
       tries = tries + 1
       if tries <= 10 then C_Timer.After(0.05, go) end
@@ -3144,7 +3145,7 @@ local function onWindowOpen(mode)
     C_Timer.After(0.05, function()
       if not tsOpen then return end
       recipeCache = nil
-      pcall(learnWindow)
+      pcall(L.learnWindow)
       soon()
     end)
   end
@@ -3182,7 +3183,7 @@ local function noteBought(id, cnt)
 end
 
 -- the older auction house (Blizzard's window and Auctionator call PlaceAuctionBid)
-local function noteBid(listType, index, bid)
+function L.noteBid(listType, index, bid)
   if not GetAuctionItemInfo then return end
   local info = { GetAuctionItemInfo(listType, index) }
   local cnt, buyout, id = info[3], info[10], info[17]
@@ -3202,16 +3203,16 @@ ev:SetScript("OnEvent", function(self, event, arg1)
       print("|cffff8800Profession Wizard:|r the ProfessionWizard_Data folder is missing or turned off, so there are no recipes. "
         .. "Install both folders from the download and turn ProfessionWizard_Data on in the AddOns list.")
     end
-    buildWant()
+    L.buildWant()
     ProfessionWizardDB = ProfessionWizardDB or {}
     for k, v in pairs(DEFAULTS) do if ProfessionWizardDB[k] == nil then ProfessionWizardDB[k] = v end end
     ProfessionWizardDB.chars = ProfessionWizardDB.chars or {}
     ProfessionWizardDB.minimap = ProfessionWizardDB.minimap or {}
     ProfessionWizardDB.posChar = ProfessionWizardDB.posChar or {}
     ProfessionWizardDB.pos = nil -- the old account-wide place: each character now keeps its own
-    pcall(importOthers)
+    pcall(L.importOthers)
     build()
-    pcall(setupMinimap)
+    pcall(L.setupMinimap)
     for _, e in ipairs({ "BAG_UPDATE_DELAYED", "SKILL_LINES_CHANGED", "CHAT_MSG_SKILL", "GET_ITEM_INFO_RECEIVED",
       "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYERBANKSLOTS_CHANGED", "PLAYER_LOGIN", "PLAYER_LOGOUT",
       "MAIL_SHOW", "MAIL_CLOSED", "MAIL_INBOX_UPDATE", "MAIL_SEND_SUCCESS", "MAIL_FAILED", "MERCHANT_SHOW",
@@ -3222,9 +3223,9 @@ ev:SetScript("OnEvent", function(self, event, arg1)
       "REPLACE_ENCHANT" }) do
       pcall(self.RegisterEvent, self, e)
     end
-    if SendMail then pcall(hooksecurefunc, "SendMail", function(recipient) pcall(noteOutgoing, recipient) end) end
+    if SendMail then pcall(hooksecurefunc, "SendMail", function(recipient) pcall(L.noteOutgoing, recipient) end) end
     if PlaceAuctionBid then
-      pcall(hooksecurefunc, "PlaceAuctionBid", function(listType, index, bid) pcall(noteBid, listType, index, bid) end)
+      pcall(hooksecurefunc, "PlaceAuctionBid", function(listType, index, bid) pcall(L.noteBid, listType, index, bid) end)
     end
     -- the newer auction house: ores, bars, gems and the like are bought as "commodities" by id and amount
     if C_AuctionHouse and C_AuctionHouse.ConfirmCommoditiesPurchase then
@@ -3250,7 +3251,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     recipeCache = nil
     if not self.learnPending then
       self.learnPending = true
-      C_Timer.After(0.5, function() self.learnPending = false; pcall(learnWindow) end)
+      C_Timer.After(0.5, function() self.learnPending = false; pcall(L.learnWindow) end)
     end
     soon(); return
   end
@@ -3263,7 +3264,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     if smeltBtn and not (frame and frame:IsShown()) then smeltBtn:Hide() end
     soon(); return
   end
-  if event == "MERCHANT_SHOW" then C_Timer.After(0.3, function() pcall(readMerchant) end); return end
+  if event == "MERCHANT_SHOW" then C_Timer.After(0.3, function() pcall(L.readMerchant) end); return end
   if event == "GET_ITEM_INFO_RECEIVED" then soon(); return end
   if event == "BAG_UPDATE_DELAYED" then recipeCache = nil end
   if event == "MAIL_SHOW" then mailShown = true end
@@ -3275,11 +3276,11 @@ ev:SetScript("OnEvent", function(self, event, arg1)
   if event == "BANKFRAME_CLOSED" then
     bankOpen = false
   end
-  if event == "MAIL_SEND_SUCCESS" then deliverOutgoing() end
+  if event == "MAIL_SEND_SUCCESS" then L.deliverOutgoing() end
   if event == "MAIL_FAILED" then outgoing = nil end
   if event == "MAIL_SHOW" or (mp and mp:IsShown()) then C_Timer.After(0.25, mpRefresh) end
   if event == "MAIL_SEND_INFO_UPDATE" then return end -- attachments changed: only the mailbox panel cares
-  if event == "PLAYER_LOGIN" then pcall(importOthers); C_Timer.After(5, snapshot); return end
+  if event == "PLAYER_LOGIN" then pcall(L.importOthers); C_Timer.After(5, snapshot); return end
   -- no snapshot at logout: the game reads bags and skills as empty by then, and the last change is saved already
   if event == "PLAYER_LOGOUT" then mailOpen, bankOpen = false, false; return end
   if event ~= "CHAT_MSG_SKILL" then
@@ -3291,7 +3292,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
   soon()
 end)
 
-local function profFromArg(a)
+function L.profFromArg(a)
   a = (a or ""):lower()
   if a == "" then return nil end
   for _, p in ipairs(PROFS) do
@@ -3383,7 +3384,7 @@ SlashCmdList.PROFESSIONWIZARD = function(msg)
     Print("/pw reset  forget where you dragged the window: it opens next to the profession window again")
     return
   end
-  local pid = profFromArg(msg)
+  local pid = L.profFromArg(msg)
   if pid then
     if not readSkill(pid) then Print("this character doesn't have " .. profName(pid) .. "."); return end
     pick(pid); frame:Show(); return
