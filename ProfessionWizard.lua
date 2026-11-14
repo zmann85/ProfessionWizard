@@ -1818,7 +1818,7 @@ local function build()
   frame.more = text(frame, 11, 1, 1, 1, 0.45)
 
   frame.foot = text(frame, 11, 1, 1, 1, 0.55)
-  frame.foot:SetWidth(W - PAD * 2 - 140)
+  frame.foot:SetWidth(W - PAD * 2); frame.foot:SetWordWrap(true); frame.foot:SetSpacing(3)
   frame.buy = chip(frame, "SEARCH MISSING", 120)
   frame.buy:SetScript("OnClick", function()
     local names = {}
@@ -1988,7 +1988,18 @@ local function placeSmelt(list, y, buyShown, hide)
       smeltBtn:Hide()
     end
   end
-  frame.foot:SetWidth(W - PAD * 2 - (right - PAD) - (smeltShown and 124 or 0) - 4)
+end
+
+-- the summary gets its own lines across the window, the buttons (SEARCH MISSING, SMELT ...) a row under it
+local function placeFooter(y, buyShown, smeltList, hideSmelt)
+  frame.foot:ClearAllPoints(); frame.foot:SetPoint("TOPLEFT", PAD, -y)
+  frame.foot:Show()
+  y = y + math.ceil(frame.foot:GetStringHeight()) + 8
+  frame.buy:ClearAllPoints(); frame.buy:SetPoint("TOPRIGHT", -PAD, -y)
+  frame.buy:SetShown(buyShown)
+  placeSmelt(smeltList, y, buyShown, hideSmelt)
+  local row = buyShown or frame.smeltAll:IsShown() or (smeltBtn and smeltBtn:IsShown())
+  frame:SetHeight(y + (row and 34 or 10))
 end
 
 ---------------------------------------------------------------------------
@@ -2306,14 +2317,10 @@ local function renderSheet(g, warm, green, red, dim)
   if #list == 0 then foot = green .. (g.name or "They") .. " has everything for this.|r"
   elseif toBuy == 0 then foot = green .. "You can send all of it.|r"
   else foot = string.format("Buy here: ~%s", money(cost)) end
-  if toSend > 0 then foot = foot .. "  ·  the mailbox panel sends it in one click" end
-  frame.foot:SetText(foot); frame.foot:Show()
-  frame.foot:ClearAllPoints(); frame.foot:SetPoint("TOPLEFT", PAD, -y - 4)
-  frame.buy:ClearAllPoints(); frame.buy:SetPoint("TOPRIGHT", -PAD, -y)
-  frame.buy:SetShown(toBuy > 0)
-  placeSmelt(nil, y, toBuy > 0, true)
+  if toSend > 0 then foot = foot .. "\nThe mailbox panel sends what you have in one click." end
+  frame.foot:SetText(foot)
+  placeFooter(y, toBuy > 0, nil, true)
   hideSecure(openBtn)
-  frame:SetHeight(y + 34)
 end
 
 -- order: things to make first, then missing, then done
@@ -2710,17 +2717,14 @@ refresh = function()
   elseif missingKinds == 0 then
     foot = green .. "You have everything up to " .. target .. ".|r"
   else
-    foot = string.format("Still to buy: ~%s", money(cost))
+    foot = "|cffffffffStill to buy: ~" .. money(cost) .. "|r"
   end
   if matTotal > 0 then
-    foot = foot .. string.format("  ·  route ~%s, vendor back ~%s", money(matTotal + plansTotal), money(vendorBack))
+    foot = foot .. "\n" .. string.format("Whole route: ~%s in materials and recipes", money(matTotal + plansTotal))
+    if vendorBack > 0 then foot = foot .. string.format("  ·  selling what you craft to a vendor gets ~%s back", money(vendorBack)) end
   end
   frame.foot:SetText(foot)
-  frame.foot:ClearAllPoints(); frame.foot:SetPoint("TOPLEFT", PAD, -y - 4)
-  frame.buy:ClearAllPoints(); frame.buy:SetPoint("TOPRIGHT", -PAD, -y)
-  frame.buy:SetShown(missingKinds > 0)
-  placeSmelt(toSmelt, y, missingKinds > 0)
-  frame:SetHeight(y + 34)
+  placeFooter(y, missingKinds > 0, toSmelt)
 end
 
 ---------------------------------------------------------------------------

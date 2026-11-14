@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- The summary under the materials (still to buy, the whole route's cost) was squeezed next to the buttons and cut
+  off. It now has its own lines across the window, with the buttons in a row underneath.
+
 ## v0.4.0-beta (2026-11-14)
 
 ### New
