@@ -1391,6 +1391,13 @@ local function searchAH(names)
   if #names == 0 then Print("nothing to buy."); return end
   if not (a and a.MultiSearchExact) then
     -- no Auctionator: put the first one in the auction house's own search box
+    local ahf = _G.AuctionHouseFrame
+    if ahf and ahf:IsShown() and ahf.SearchBar and ahf.SearchBar.SearchBox then
+      ahf.SearchBar.SearchBox:SetText(names[1])
+      if ahf.SearchBar.StartSearch then pcall(ahf.SearchBar.StartSearch, ahf.SearchBar) end
+      if #names > 1 then Print("also on the list: " .. table.concat(names, ", ", 2)) end
+      return
+    end
     local box = _G.BrowseName
     if box and _G.AuctionFrame and _G.AuctionFrame:IsShown() then
       box:SetText(names[1])
@@ -2263,6 +2270,13 @@ local function finishScan(stopped)
   if refresh then refresh() end
 end
 
+-- The auction house: WoW Forever looks like Classic but runs the modern auction house underneath
+-- (C_AuctionHouse: search by item, commodities and items, a throttle between searches). Older clients have
+-- the Classic one (QueryAuctionItems / GetAuctionItemInfo). The scan uses whichever this client has.
+function L.modernAH()
+  return C_AuctionHouse and C_AuctionHouse.SendSearchQuery and C_AuctionHouse.MakeItemKey and true or false
+end
+
 function L.readResults()
   if not scan or not scan.waiting then return end
   local n = (GetNumAuctionItems and GetNumAuctionItems("list")) or 0
@@ -2275,6 +2289,42 @@ function L.readResults()
       qty = qty + cnt
     end
   end
+  L.storeUnits(units, qty)
+end
+
+-- modern auction house results for the item we searched: "commodity" (materials, arg = itemID) or
+-- "item" (gear, recipes ..., arg = itemKey)
+function L.readModern(kind, arg)
+  if not scan or not scan.waiting then return end
+  local A = C_AuctionHouse
+  local units, qty = {}, 0
+  if kind == "commodity" then
+    if arg ~= scan.id then return end
+    local n = (A.GetNumCommoditySearchResults and A.GetNumCommoditySearchResults(scan.id)) or 0
+    for i = 1, n do
+      local r = A.GetCommoditySearchResultInfo(scan.id, i)
+      if r and (r.unitPrice or 0) > 0 and (r.quantity or 0) > 0 then
+        units[#units + 1] = { p = r.unitPrice, n = r.quantity }
+        qty = qty + r.quantity
+      end
+    end
+  else
+    if type(arg) == "table" and arg.itemID and arg.itemID ~= scan.id then return end
+    local key = scan.key
+    local n = (A.GetNumItemSearchResults and A.GetNumItemSearchResults(key)) or 0
+    for i = 1, n do
+      local r = A.GetItemSearchResultInfo(key, i)
+      local q = r and math.max(1, r.quantity or 1)
+      if r and (r.buyoutAmount or 0) > 0 then
+        units[#units + 1] = { p = r.buyoutAmount / q, n = q }
+        qty = qty + q
+      end
+    end
+  end
+  L.storeUnits(units, qty)
+end
+
+function L.storeUnits(units, qty)
   table.sort(units, function(a, b) return a.p < b.p end)
   local st = L.scanStore()
   if #units == 0 then
@@ -2299,6 +2349,22 @@ scanFrame:SetScript("OnUpdate", function(self)
   if not ahOpen then finishScan(true); return end
   if scan.waiting then
     if GetTime() - scan.sentAt > 8 then scan.waiting = false end -- no answer: move on
+    return
+  end
+  if L.modernAH() then
+    -- one search at a time, and only when the game's throttle lets the next one through
+    local A = C_AuctionHouse
+    if A.IsThrottledMessageSystemReady and not A.IsThrottledMessageSystemReady() then return end
+    scan.i = scan.i + 1
+    local id = scan.list[scan.i]
+    if not id then finishScan(); return end
+    local okKey, key = pcall(A.MakeItemKey, id)
+    if not okKey or not key then return end
+    scan.id, scan.key, scan.name, scan.waiting, scan.sentAt = id, key, GetItemInfo(id), true, GetTime()
+    local sorts = { { sortOrder = Enum and Enum.AuctionHouseSortOrder and Enum.AuctionHouseSortOrder.Price or 0, reverseSort = false } }
+    local sent = pcall(A.SendSearchQuery, key, sorts, true)
+    if not sent then scan.waiting = false end
+    scanLabel()
     return
   end
   if not CanSendAuctionQuery then finishScan(true); return end
@@ -2345,9 +2411,11 @@ startScan = function()
   scanFrame:Show()
 end
 
-local function onAuction(event)
+local function onAuction(event, arg1)
   if event == "AUCTION_HOUSE_SHOW" then ahOpen = true
   elseif event == "AUCTION_HOUSE_CLOSED" then ahOpen = false
+  elseif event == "COMMODITY_SEARCH_RESULTS_UPDATED" then pcall(L.readModern, "commodity", arg1)
+  elseif event == "ITEM_SEARCH_RESULTS_UPDATED" then pcall(L.readModern, "item", arg1)
   elseif event == "AUCTION_ITEM_LIST_UPDATE" and scan and scan.waiting and not scan.reading then
     scan.reading = true
     C_Timer.After(0.2, function() if scan then scan.reading = false; L.readResults() end end)
@@ -3368,6 +3436,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
       "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE",
       "CRAFT_SHOW", "CRAFT_CLOSE", "CRAFT_UPDATE", "PLAYER_REGEN_ENABLED",
       "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "AUCTION_ITEM_LIST_UPDATE", "MAIL_SEND_INFO_UPDATE",
+      "COMMODITY_SEARCH_RESULTS_UPDATED", "ITEM_SEARCH_RESULTS_UPDATED",
       "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_FAILED",
       "REPLACE_ENCHANT" }) do
       pcall(self.RegisterEvent, self, e)
@@ -3404,8 +3473,11 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     end
     soon(); return
   end
+  if event == "COMMODITY_SEARCH_RESULTS_UPDATED" or event == "ITEM_SEARCH_RESULTS_UPDATED" then
+    onAuction(event, arg1); return
+  end
   if event:sub(1, 8) == "AUCTION_" then
-    onAuction(event)
+    onAuction(event, arg1)
     if event ~= "AUCTION_ITEM_LIST_UPDATE" then soon() end
     return
   end

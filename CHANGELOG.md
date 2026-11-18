@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- SCAN AH didn't work in WoW Forever ("stopped after 0 items"): Forever's auction house looks like Classic's but
+  is the modern one underneath. The scan now uses the modern auction house's search (one item at a time, waiting
+  for the game's throttle), and still the Classic one on clients that have it. SEARCH MISSING without
+  Auctionator also fills the modern auction house's search box.
+
 ## v1.2.0 (2026-11-14)
 
 ### Fixed
