@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- A recipe you learned while the profession window was open (from a recipe item in your bags) only got its count
+  and CRAFT button after the list was reopened. The list now updates right after.
+
 ## v1.2.1 (2026-11-18)
 
 ### Fixed

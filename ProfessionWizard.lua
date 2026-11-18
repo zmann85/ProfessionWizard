@@ -3438,7 +3438,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
       "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "AUCTION_ITEM_LIST_UPDATE", "MAIL_SEND_INFO_UPDATE",
       "COMMODITY_SEARCH_RESULTS_UPDATED", "ITEM_SEARCH_RESULTS_UPDATED",
       "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_FAILED",
-      "REPLACE_ENCHANT" }) do
+      "REPLACE_ENCHANT", "NEW_RECIPE_LEARNED", "LEARNED_SPELL_IN_TAB" }) do
       pcall(self.RegisterEvent, self, e)
     end
     if SendMail then pcall(hooksecurefunc, "SendMail", function(recipient) pcall(L.noteOutgoing, recipient) end) end
@@ -3465,11 +3465,19 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     if (event == "CRAFT_CLOSE") == (tsMode == "craft") then tsOpen, tsProf, tsMode, recipeCache = false, nil, nil, nil end
     soon(); return
   end
-  if event == "TRADE_SKILL_UPDATE" or event == "TRADE_SKILL_LIST_UPDATE" or event == "CRAFT_UPDATE" then
+  if event == "TRADE_SKILL_UPDATE" or event == "TRADE_SKILL_LIST_UPDATE" or event == "CRAFT_UPDATE"
+    or event == "NEW_RECIPE_LEARNED" or event == "LEARNED_SPELL_IN_TAB" then
     recipeCache = nil
     if not self.learnPending then
       self.learnPending = true
-      C_Timer.After(0.5, function() self.learnPending = false; pcall(L.learnWindow) end)
+      -- read the window's recipes (a recipe you just learned among them), then redraw with them: redrawing
+      -- before that showed the new recipe without its count and CRAFT button until the list was reopened
+      C_Timer.After(0.5, function()
+        self.learnPending = false
+        recipeCache = nil
+        pcall(L.learnWindow)
+        soon()
+      end)
     end
     soon(); return
   end
