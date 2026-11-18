@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.2.3 (2026-11-18)
 
 ### Fixed
 - SCAN AH, checked against Auctionator's prices (they agree for materials) and how Auctionator searches:
