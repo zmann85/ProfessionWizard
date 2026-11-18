@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- SCAN AH, checked against Auctionator's prices (they agree for materials) and how Auctionator searches:
+  - Recipes and other single items were priced 15-20 times too cheap (the price per item was divided by the
+    listing's quantity again).
+  - Items the game hadn't loaded yet were often skipped: the game ignores those searches. The scan now waits for
+    the item first and tries it again at the end if it doesn't come.
+  - An empty or incomplete first answer counted as "not on the auction house"; the scan now asks again.
+- SCAN AH skipped everything scanned in the last hour. It now looks everything up again every time.
+
 ## v1.2.2 (2026-11-18)
 
 ### Fixed

@@ -2148,7 +2148,6 @@ end
 ---------------------------------------------------------------------------
 -- Own auction house scan: only the items this profession could use in your range
 ---------------------------------------------------------------------------
-local SCAN_FRESH = 3600
 local ahOpen = false
 local scan -- { list, i, total, pid, id, name, waiting, sentAt, found, none, tries }
 local scanFrame = CreateFrame("Frame")
@@ -2298,6 +2297,26 @@ function L.readModern(kind, arg)
   if not scan or not scan.waiting then return end
   local A = C_AuctionHouse
   local units, qty = {}, 0
+  -- The game sometimes answers before the results are there (none, or "not complete yet" with 0). Like
+  -- Auctionator, search again then (up to 3 times) instead of taking it as "not on the auction house".
+  local function incomplete(key, full, quantity)
+    local has = A.HasSearchResults and A.HasSearchResults(key)
+    if has == nil then return false end
+    return (not has) or (not full and (quantity or 0) == 0)
+  end
+  if kind == "commodity" and arg == scan.id then
+    local full = A.HasFullCommoditySearchResults and A.HasFullCommoditySearchResults(scan.id)
+    local quantity = A.GetCommoditySearchResultsQuantity and A.GetCommoditySearchResultsQuantity(scan.id)
+    if incomplete(scan.key, full, quantity) and (scan.again or 0) < 3 then
+      scan.again = (scan.again or 0) + 1; scan.waiting = false; scan.resend = true; return
+    end
+  elseif kind == "item" and (type(arg) ~= "table" or not arg.itemID or arg.itemID == scan.id) then
+    local full = A.HasFullItemSearchResults and A.HasFullItemSearchResults(scan.key)
+    local quantity = A.GetItemSearchResultsQuantity and A.GetItemSearchResultsQuantity(scan.key)
+    if incomplete(scan.key, full, quantity) and (scan.again or 0) < 3 then
+      scan.again = (scan.again or 0) + 1; scan.waiting = false; scan.resend = true; return
+    end
+  end
   if kind == "commodity" then
     if arg ~= scan.id then return end
     local n = (A.GetNumCommoditySearchResults and A.GetNumCommoditySearchResults(scan.id)) or 0
@@ -2316,7 +2335,9 @@ function L.readModern(kind, arg)
       local r = A.GetItemSearchResultInfo(key, i)
       local q = r and math.max(1, r.quantity or 1)
       if r and (r.buyoutAmount or 0) > 0 then
-        units[#units + 1] = { p = r.buyoutAmount / q, n = q }
+        -- buyoutAmount is the price of one (that's how Auctionator reads it too); dividing it by the quantity
+        -- made recipes and other single items look 15-20 times cheaper than they are
+        units[#units + 1] = { p = r.buyoutAmount, n = q }
         qty = qty + q
       end
     end
@@ -2348,22 +2369,49 @@ scanFrame:SetScript("OnUpdate", function(self)
   if not scan then self:Hide(); return end
   if not ahOpen then finishScan(true); return end
   if scan.waiting then
-    if GetTime() - scan.sentAt > 8 then scan.waiting = false end -- no answer: move on
+    if GetTime() - scan.sentAt > 8 then
+      -- no answer: try this item once more at the end, then move on
+      scan.waiting = false
+      if scan.id then
+        scan.tries[scan.id] = (scan.tries[scan.id] or 0) + 1
+        if scan.tries[scan.id] < 2 then scan.list[#scan.list + 1] = scan.id; scan.total = #scan.list end
+      end
+    end
     return
   end
   if L.modernAH() then
     -- one search at a time, and only when the game's throttle lets the next one through
     local A = C_AuctionHouse
     if A.IsThrottledMessageSystemReady and not A.IsThrottledMessageSystemReady() then return end
-    scan.i = scan.i + 1
-    local id = scan.list[scan.i]
-    if not id then finishScan(); return end
-    local okKey, key = pcall(A.MakeItemKey, id)
-    if not okKey or not key then return end
-    scan.id, scan.key, scan.name, scan.waiting, scan.sentAt = id, key, GetItemInfo(id), true, GetTime()
     local sorts = { { sortOrder = Enum and Enum.AuctionHouseSortOrder and Enum.AuctionHouseSortOrder.Price or 0, reverseSort = false } }
-    local sent = pcall(A.SendSearchQuery, key, sorts, true)
-    if not sent then scan.waiting = false end
+    if scan.resend and scan.key then
+      -- the last answer came back empty or incomplete: ask again for the same item
+      scan.resend, scan.waiting, scan.sentAt = false, true, GetTime()
+      if not pcall(A.SendSearchQuery, scan.key, sorts, true) then scan.waiting = false end
+      return
+    end
+    if not scan.pending then
+      scan.i = scan.i + 1
+      local id = scan.list[scan.i]
+      if not id then finishScan(); return end
+      local okKey, key = pcall(A.MakeItemKey, id)
+      if not okKey or not key then return end
+      scan.pending, scan.pendingKey, scan.pendingAt = id, key, GetTime()
+    end
+    -- the game ignores a search for an item it hasn't cached yet: wait for its item key info first
+    -- (up to 3 seconds; then try it once more at the end)
+    if A.GetItemKeyInfo and not A.GetItemKeyInfo(scan.pendingKey) then
+      if GetTime() - scan.pendingAt < 3 then return end
+      local id = scan.pending
+      scan.pending = nil
+      scan.tries[id] = (scan.tries[id] or 0) + 1
+      if scan.tries[id] < 2 then scan.list[#scan.list + 1] = id; scan.total = #scan.list end
+      return
+    end
+    scan.id, scan.key, scan.name, scan.again = scan.pending, scan.pendingKey, GetItemInfo(scan.pending), 0
+    scan.pending = nil
+    scan.waiting, scan.sentAt = true, GetTime()
+    if not pcall(A.SendSearchQuery, scan.key, sorts, true) then scan.waiting = false end
     scanLabel()
     return
   end
@@ -2395,13 +2443,8 @@ startScan = function()
   if not pid then return end
   local cur = readSkill(pid) or 1
   local target = targetFor(pid, cur)
-  local st = L.scanStore()
-  local list = {}
-  for _, id in ipairs(scanList(pid, cur, math.max(target, L.nextMilestone(cur)))) do
-    local e = st[id]
-    if not e or time() - e.t > SCAN_FRESH then list[#list + 1] = id end
-  end
-  if #list == 0 then Print("every price for this range is less than an hour old."); return end
+  local list = scanList(pid, cur, math.max(target, L.nextMilestone(cur)))
+  if #list == 0 then Print("nothing to look up for this range."); return end
   for _, id in ipairs(list) do
     if not GetItemInfo(id) and C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
   end
