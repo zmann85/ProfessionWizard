@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.2.1 (2026-11-18)
 
 ### Fixed
 - SCAN AH didn't work in WoW Forever ("stopped after 0 items"): Forever's auction house looks like Classic's but
