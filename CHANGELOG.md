@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.2.2 (2026-11-18)
 
 ### Fixed
 - A recipe you learned while the profession window was open (from a recipe item in your bags) only got its count
