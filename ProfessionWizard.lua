@@ -291,7 +291,16 @@ function L.knownSet()
   return ProfessionWizardDB.known[k]
 end
 
-local function isKnown(r) return L.knownSet()[r.spell] and true or false end
+-- known: seen learned in a profession window, and (once the game is known to answer for recipes) still a spell
+-- of this character. A profession dropped and learned again starts empty, and old entries mustn't stay.
+local function isKnown(r)
+  if not L.knownSet()[r.spell] then return false end
+  if ProfessionWizardDB.spellCheck and IsPlayerSpell and r.spell < 1400000 then
+    local ok, has = pcall(IsPlayerSpell, r.spell)
+    if ok and not has then return false end
+  end
+  return true
+end
 
 function L.seenProf(pid)
   ProfessionWizardDB.seen = ProfessionWizardDB.seen or {}
@@ -1201,6 +1210,11 @@ function L.learnWindow()
     local r = L.matchData(w, tsProf, itemOf[w])
     if r then
       known[r.spell] = true
+      -- does the game answer IsPlayerSpell for recipes? (then isKnown can check old entries with it)
+      if not ProfessionWizardDB.spellCheck and IsPlayerSpell then
+        local ok, has = pcall(IsPlayerSpell, r.spell)
+        if ok and has then ProfessionWizardDB.spellCheck = true end
+      end
       if rank and w.kind then
         local y, g = r.y, r.g
         local green = (y + g) / 2

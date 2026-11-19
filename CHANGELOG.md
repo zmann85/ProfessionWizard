@@ -10,6 +10,9 @@
   route spends them before anything you'd have to buy. What counts follows COUNT BANK, COUNT ALTS and COUNT MAIL.
 
 ### Fixed
+- Recipes stayed "known" after dropping a profession and learning it again, so a fresh Alchemy could still plan the
+  Discolored potions as known (special trainers off or not). Known recipes are now checked against the
+  character's spells.
 - A route marked out of date (after changing SPECIAL TRAINERS, USE WHAT I HAVE or a data fix) kept showing the
   old steps until you clicked FIND CHEAPEST ROUTE, so the Discolored potions could stay in it with special
   trainers off. It's now worked out again by itself.
