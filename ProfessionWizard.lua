@@ -641,8 +641,14 @@ function L.trainable(r)
   return true
 end
 
+-- recipes on a cooldown (transmutes, Mooncloth, the Salt Shaker): no good for levelling, nor for making materials
+function L.onCooldown(r)
+  return (ns.COOLDOWN or {})[r.spell] or (r.name and r.name:find("^Transmute") ~= nil)
+end
+
 -- can this be made on the way, as a material for something else?
 function L.canMake(r, ctx)
+  if L.onCooldown(r) then return false end
   if r.prof == MINING then return ctx.mining >= r.learn end
   if r.prof ~= ctx.pid then return false end
   if isKnown(r) then return true end
@@ -683,6 +689,7 @@ end
 -- may this recipe be used for skill-ups, and what do its plans cost?
 function L.usable(r, from)
   if r.creates == 0 and r.prof ~= 333 then return false end
+  if L.onCooldown(r) then return false end
   if isKnown(r) then return true, 0 end
   if L.trainable(r) then return true, 0 end
   if r.plans > 0 and ProfessionWizardDB.plans then
@@ -3558,11 +3565,11 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     ProfessionWizardDB.pos = nil -- the old account-wide place: each character now keeps its own
     -- recipe data corrected (recipes that need plans were marked as taught by trainers): every saved route
     -- shows as out of date, so FIND CHEAPEST ROUTE plans around them again
-    if (ProfessionWizardDB.dataVersion or 1) < 6 then
+    if (ProfessionWizardDB.dataVersion or 1) < 7 then
       for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
         for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
       end
-      ProfessionWizardDB.dataVersion = 6
+      ProfessionWizardDB.dataVersion = 7
     end
     pcall(L.importOthers)
     build()

@@ -10,6 +10,8 @@
   rank don't teach them.
 
 ### Fixed
+- Routes no longer use recipes with a cooldown: every Transmute (Iron to Gold was planned for 225-271), Mooncloth
+  and Cured Rugged Hide. They aren't used to make materials either. Saved routes show as out of date.
 - At a cap of 150 the header said "train Artisan (level 35)"; it now says Expert (level 20).
 
 ## v1.4.0 (2026-11-19)

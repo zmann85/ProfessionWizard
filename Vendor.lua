@@ -38,3 +38,9 @@ ns.NO_SOURCE = {
   [12719] = true, -- Explosive Arrow
   [12900] = true, -- Mobile Alarm
 }
+
+-- recipes with a cooldown (besides every Transmute): routes and material plans never use them
+ns.COOLDOWN = {
+  [18560] = true, -- Mooncloth
+  [19047] = true, -- Cured Rugged Hide (Salt Shaker)
+}
