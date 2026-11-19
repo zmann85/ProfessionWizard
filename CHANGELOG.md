@@ -8,8 +8,8 @@
 
 ### Fixed
 - Checked every recipe against a second WoW Forever source (timesaver.gg) and corrected 123 of them. Learn levels
-  only ever went up, so no route plans a recipe before you can learn it. Among them: Minor Healing Potion (55),
-  Healing Potion (135), the first-aid kits and poultices, the new chain and leather sets, the dyes, Shining Mithril
+  only ever went up, so no route plans a recipe before you can learn it. Among them the First Aid healing potions
+  (Minor 55, Lesser 85, Healing Potion 135), the First Aid Kit, poultices and tourniquets, the new chain and leather sets, the dyes, Shining Mithril
   Helm, Prefect's Waistguard, the Hearts of the Mountain, the weaponsmith and Dark Iron 300 plans, and most of the
   new cooking recipes, whose colours were also wrong (Swiftstrike Steak and Clam Linguine are 280 recipes, not 175).
 - Mooncloth Boots come from the quest Sacred Cloth, not a trainer. Draught of Water Walking, Refined Scale of
