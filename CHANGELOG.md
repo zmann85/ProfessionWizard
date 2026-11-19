@@ -10,6 +10,9 @@
   route spends them before anything you'd have to buy. What counts follows COUNT BANK, COUNT ALTS and COUNT MAIL.
 
 ### Fixed
+- A route marked out of date (after changing SPECIAL TRAINERS, USE WHAT I HAVE or a data fix) kept showing the
+  old steps until you clicked FIND CHEAPEST ROUTE, so the Discolored potions could stay in it with special
+  trainers off. It's now worked out again by itself.
 - Camping recipes (Mana Well, Camp Tent, Sharpening Wheel, the campfires, Anvil, Loom and the rest) are left out
   of routes: they give no skill points. Saved routes show as out of date.
 

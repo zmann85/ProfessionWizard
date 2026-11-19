@@ -827,7 +827,8 @@ end
 local function routeFor(pid, cur, target, force)
   local store = routeStore()
   local r = store[pid]
-  local stale = not r or force or r.from > cur or r.to < target
+  -- out of date after a setting or data change: work it out again straight away, an old route can be wrong
+  local stale = not r or force or r.dirty or r.from > cur or r.to < target
   -- some vendor prices weren't loaded yet: try again a couple of times once they are
   local retry = not stale and r.waiting and r.waiting > 0 and (r.retries or 0) < 3 and time() - (r.time or 0) >= 2
   if stale or retry then
