@@ -2920,13 +2920,13 @@ refresh = function()
   -- steps
   local steps = route and plan(route, cur, target) or {}
   -- a row "train Expert" where the route reaches a cap you have (or will have) to train past
-  local rows = {}
+  local stepRows = {}
   for _, st in ipairs(steps) do
     if cap and (st.from == 75 or st.from == 150 or st.from == 225) and st.from >= cap and ns.rankInfo then
       local rk, where = ns.rankInfo(pid, st.from, profName(pid))
-      if rk then rows[#rows + 1] = { rankRow = rk, where = where, from = st.from } end
+      if rk then stepRows[#stepRows + 1] = { rankRow = rk, where = where, from = st.from } end
     end
-    rows[#rows + 1] = st
+    stepRows[#stepRows + 1] = st
   end
   local ctx = newCtx(pid, cur)
   local y = 160
@@ -2955,7 +2955,7 @@ refresh = function()
   local stepH = STEP_H + 4
   local openY -- first step that could be crafted once the window is open
   for i, l in ipairs(stepLines) do
-    local st = rows[i]
+    local st = stepRows[i]
     if st then
       l.st = st
       l:ClearAllPoints(); l:SetPoint("TOPLEFT", PAD, -y); y = y + stepH
