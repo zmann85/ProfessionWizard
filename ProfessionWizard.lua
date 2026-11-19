@@ -3336,7 +3336,7 @@ end
 
 -- learn at the trainer: everything the routes want that it shows as available. From the last line up, so the
 -- lines still to go keep their place when a learned one drops off the list. Returns how many it learned.
--- (GetTrainerServiceInfo here gives name, icon, kind.)
+-- (L.trainerService reads each line in either client order.)
 function L.autoLearnRun(want, rankFor, again)
   local todo = {}
   for i = 1, GetNumTrainerServices() or 0 do
