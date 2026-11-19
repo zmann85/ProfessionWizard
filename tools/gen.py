@@ -2,6 +2,7 @@ import re, json, collections
 J='/home/claude/bparish628/wow-profession-journal/Data/Recipes.lua'
 atlas=json.load(open('recipes.json'))
 # Thorium Greatsword: not taught by trainers, it needs Plans: Thorium Greatsword (12816), seen in game 14 Nov 2026
+LEARN_MIN={ 2329:15, 1230564:20, 1249630:40, 1249631:120, 1249632:215, 1249633:40, 2664:65, 2668:80, 2675:120, 2740:85, 2741:90, 2742:95, 10003:235, 10007:245, 10011:250, 10015:260, 1230171:20, 1230643:20, 1230656:20, 1249634:120, 2165:75, 24654:300, 1229432:20, 1229504:20, 1263425:20 }
 OVERRIDES={16960:(12816,False), 2334:(None,True)}  # 2334 Elixir of Minor Fortitude: trainer; 2554 is a deprecated item
 # New Forever recipes taught by a recipe item that the client data calls trainer recipes (from wowcraft.io's
 # Forever data, 14 Nov 2026): spell -> recipe item
@@ -40,6 +41,9 @@ for line in open(J):
     if y is None or y==0: y=learn
     if g is None or g==0: g=y+25
     learn=max(1,min(learn,y))
+    # trainer learn levels the client data has too low (seen in game: Mana Well needs 20, not 1); from wowcraft.io's
+    # Forever data, only where theirs is higher (19 Nov 2026)
+    if sp in LEARN_MIN: learn=max(learn, min(LEARN_MIN[sp], y))
     # corrections the client data gets wrong: (plans item, from trainer)
     if sp in OVERRIDES: ri, trainer = OVERRIDES[sp]; ri = ri or 0
     elif trainer and not ri and sp in TEACH: ri, trainer = TEACH[sp], False

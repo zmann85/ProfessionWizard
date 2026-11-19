@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- 25 trainer recipes could be planned before a trainer teaches them. Among them Mana Well and the other new
+  camping recipes (Sharpening Wheel, Enchanted Lute, Reagent Bot, Camp Tent, Faction Banner: 20, not 1), the
+  dyes, Sulfuric Acid, Elixir of Minor Strength, the bronze weapons, Medium Armor Kit and the weaponsmith swords
+  (The Shatterer, Phantom Blade, Blight, Truesilver Champion). Saved routes show as out of date once more.
+
 ## v1.3.0 (2026-11-19)
 
 ### New
