@@ -13,6 +13,8 @@
   carry yet; vendor recipes stay out).
 
 ### Fixed
+- Trade supply items (vials, thread, flux, spices...) are bought from the vendor unless the AH is at least 20%
+  cheaper. Crystal Vials showed as an AH buy because the AH was a few copper under the vendor's 5s.
 - Routes no longer use recipes with a cooldown: every Transmute (Iron to Gold was planned for 225-271), Mooncloth
   and Cured Rugged Hide. They aren't used to make materials either. Saved routes show as out of date.
 - At a cap of 150 the header said "train Artisan (level 35)"; it now says Expert (level 20).

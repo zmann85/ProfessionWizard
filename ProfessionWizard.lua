@@ -348,7 +348,9 @@ end
 local function buyPrice(id)
   local a, v = ahPrice(id), L.vendorBuy(id)
   if a and v then
-    if v <= a then return v, "vendor" end
+    -- a trade supply vendor never runs out, so it wins unless the AH saves at least a fifth
+    -- (Crystal Vials: 5s at the vendor, often 4s50 on the AH)
+    if v <= a or (ns.VENDOR_ITEMS[id] and a >= v * 0.8) then return v, "vendor" end
     return a, "ah"
   end
   if v then return v, "vendor" end
