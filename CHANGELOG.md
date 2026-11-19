@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.6.0 (2026-11-19)
 
 ### Added
 - Training costs count toward the route. Each trainer recipe carries its fee (shown next to "trainer" on its step
