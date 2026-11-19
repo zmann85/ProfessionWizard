@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.4.0 (2026-11-19)
 
 ### Added
 - Settings: SPECIAL TRAINERS (on by default). Switch it off and routes only use recipes from the usual trainers,
