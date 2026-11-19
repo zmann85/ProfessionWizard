@@ -295,7 +295,7 @@ end
 -- of this character. A profession dropped and learned again starts empty, and old entries mustn't stay.
 local function isKnown(r)
   if not L.knownSet()[r.spell] then return false end
-  if ProfessionWizardDB.spellCheck and IsPlayerSpell and r.spell < 1400000 then
+  if ProfessionWizardDB.spellCheck and IsPlayerSpell then
     local ok, has = pcall(IsPlayerSpell, r.spell)
     if ok and not has then return false end
   end
