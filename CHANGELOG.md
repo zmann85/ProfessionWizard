@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### New
+- With Auctionator, SEARCH MISSING and clicking a material search for the amount you still need, so Auctionator's
+  buy screen starts at that amount (a recipe line: 1). In a crafter's list on an alt, it's the amount to buy.
+
 ## v1.2.3 (2026-11-18)
 
 ### Fixed

@@ -1386,9 +1386,19 @@ local function setTarget(v)
   pcall(saveGoals)
 end
 
-local function searchAH(names)
+-- names: item names to look up; qty (optional): how many of each you still need, by name. With Auctionator
+-- the searches carry that amount, so its buy screen starts at it.
+local function searchAH(names, qty)
   local a = Auctionator and Auctionator.API and Auctionator.API.v1
   if #names == 0 then Print("nothing to buy."); return end
+  if a and a.MultiSearchAdvanced and qty then
+    local terms = {}
+    for _, n in ipairs(names) do
+      local q = qty[n]
+      terms[#terms + 1] = { searchString = n, isExact = true, quantity = (q and q > 0) and math.ceil(q) or nil }
+    end
+    if pcall(a.MultiSearchAdvanced, CALLER, terms) then return end
+  end
   if not (a and a.MultiSearchExact) then
     -- no Auctionator: put the first one in the auction house's own search box
     local ahf = _G.AuctionHouseFrame
@@ -1470,7 +1480,7 @@ function L.makeRow(i)
     end
     local p, where = buyPrice(row.id)
     if p then GameTooltip:AddDoubleLine(where == "vendor" and "Vendor price" or "AH price", money(p), 0.6, 0.6, 0.6, 0.6, 0.6, 0.6) end
-    GameTooltip:AddLine("Click to search the AH, shift-click to link.", 1, 1, 1, true)
+    GameTooltip:AddLine("Click to search the AH (with Auctionator, for the amount you still need), shift-click to link.", 1, 1, 1, true)
     GameTooltip:Show()
   end)
   r:SetScript("OnLeave", function(self) self.hl:Hide(); GameTooltip:Hide() end)
@@ -1478,7 +1488,13 @@ function L.makeRow(i)
     if not self.row then return end
     local name, link = GetItemInfo(self.row.id)
     if IsShiftKeyDown() and link then insertLink(link); return end
-    if name then searchAH({ name }) end
+    -- all of this item still missing (it can have an indented line too), or what the list says to buy
+    local q = 0
+    for _, row in ipairs(frame.list or {}) do
+      if row.id == self.row.id then q = q + (row.missing or 0) end
+    end
+    if q == 0 then q = self.row.missing or self.row.buy or 0 end
+    if name then searchAH({ name }, { [name] = q }) end
   end)
   return r
 end
@@ -1569,7 +1585,7 @@ function L.makeStep(i)
     if not r or isKnown(r) or r.trainer or (r.plans or 0) == 0 then return end
     local name, link = GetItemInfo(r.plans)
     if IsShiftKeyDown() and link then insertLink(link); return end
-    if name then searchAH({ name }) end
+    if name then searchAH({ name }, { [name] = 1 }) end
   end)
   l.go:Hide(); l.amt:Hide()
   return l
@@ -1963,15 +1979,16 @@ local function build()
   frame.foot:SetWidth(W - PAD * 2); frame.foot:SetWordWrap(true); frame.foot:SetSpacing(3)
   frame.buy = chip(frame, "SEARCH MISSING", 120)
   frame.buy:SetScript("OnClick", function()
-    local names, seen = {}, {}
+    local names, qty = {}, {}
     for _, row in ipairs(frame.list or {}) do
-      if row.missing > 0 and not seen[row.id] then
-        seen[row.id] = true
-        local n = GetItemInfo(row.id)
-        if n then names[#names + 1] = n end
+      local miss = row.missing or row.buy or 0
+      local n = miss > 0 and GetItemInfo(row.id)
+      if n then
+        if not qty[n] then names[#names + 1] = n end
+        qty[n] = (qty[n] or 0) + miss -- an item with an indented line too: both parts
       end
     end
-    searchAH(names)
+    searchAH(names, qty)
   end)
 
   frame.empty = text(frame, 12, 1, 1, 1, 0.7)
