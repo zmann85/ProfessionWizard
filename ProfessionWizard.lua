@@ -650,12 +650,21 @@ function L.trainCost(r)
   return seen or (ns.TRAIN_COST or {})[r.spell] or 0
 end
 
+-- one line of the trainer window: name and kind (available, unavailable, used, header). Classic gives
+-- name, subtext, kind; WoW Forever's client gives name, kind, icon like retail.
+local TRAINER_KINDS = { available = true, unavailable = true, used = true, header = true }
+function L.trainerService(i)
+  local name, b, c = GetTrainerServiceInfo(i)
+  if TRAINER_KINDS[b] then return name, b end
+  return name, c
+end
+
 -- read the trainer window, so what it charges is known from then on
 function L.readTrainer()
   if not (GetNumTrainerServices and GetTrainerServiceInfo and GetTrainerServiceCost) then return end
   ProfessionWizardDB.trainCost = ProfessionWizardDB.trainCost or {}
   for i = 1, GetNumTrainerServices() or 0 do
-    local name, _, kind = GetTrainerServiceInfo(i)
+    local name, kind = L.trainerService(i)
     local cost = GetTrainerServiceCost(i)
     if name and kind ~= "header" and cost and cost > 0 then ProfessionWizardDB.trainCost[name] = cost end
   end
@@ -3331,7 +3340,7 @@ end
 function L.autoLearnRun(want, rankFor, again)
   local todo = {}
   for i = 1, GetNumTrainerServices() or 0 do
-    local name, _, kind = GetTrainerServiceInfo(i)
+    local name, kind = L.trainerService(i)
     local isRank = false
     if name and not want[name] then
       local low = name:lower()
@@ -3949,7 +3958,7 @@ SlashCmdList.PROFESSIONWIZARD = function(msg)
     for name in pairs(want) do names[#names + 1] = name end
     Print("routes want: " .. (#names > 0 and table.concat(names, ", ") or "nothing"))
     for i = 1, math.min(n, 40) do
-      local name, _, kind = GetTrainerServiceInfo(i)
+      local name, kind = L.trainerService(i)
       if kind ~= "header" and kind ~= "used" then
         Print(string.format("%d. %s [%s]%s", i, tostring(name), tostring(kind),
           want[name or ""] and " <- wanted" or ""))

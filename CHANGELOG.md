@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Fixed
+- LEARN AT TRAINER never learned anything: WoW Forever's trainer list gives its entries in a different order than
+  Classic, so no recipe ever looked "available". It reads both now.
 - LEARN AT TRAINER learns everything due in one go (it waited for the list to update after each one), and the
   trainer window gets a LEARN FOR ROUTE button that does the same with a click.
 - LEARN AT TRAINER could miss the trainer's list when it wasn't filled in yet as the window opened; it now looks
