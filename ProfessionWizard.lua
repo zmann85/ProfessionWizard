@@ -3304,7 +3304,12 @@ function L.autoLearn()
   if ProfessionWizardDB.autoLearn == false then return end
   if not (GetNumTrainerServices and GetTrainerServiceInfo and BuyTrainerService) then return end
   if SetTrainerServiceTypeFilter then pcall(SetTrainerServiceTypeFilter, "available", 1) end
-  -- what the routes of this character still need: recipe names, and the next rank's profession
+  local want, rankFor = L.learnWants()
+  L.autoLearnRun(want, rankFor)
+end
+
+-- what the routes of this character still need: recipe names, and the next rank's profession
+function L.learnWants()
   local want, rankFor = {}, {}
   local skills = readSkills()
   for pid, route in pairs(routeStore()) do
@@ -3318,6 +3323,11 @@ function L.autoLearn()
       if sk.max and sk.max < 300 and sk.max < target then rankFor[profName(pid)] = true end
     end
   end
+  return want, rankFor
+end
+
+-- learn at the trainer: one service per call (the list changes after each)
+function L.autoLearnRun(want, rankFor)
   for i = 1, GetNumTrainerServices() or 0 do
     local name, sub, kind = GetTrainerServiceInfo(i)
     -- a rank shows as "Alchemy" with "Expert" under it, or as "Expert Alchemist"
@@ -3828,7 +3838,14 @@ ev:SetScript("OnEvent", function(self, event, arg1)
   if event == "MERCHANT_SHOW" then C_Timer.After(0.3, function() pcall(L.readMerchant) end); return end
   if event == "TRAINER_SHOW" or event == "TRAINER_UPDATE" then
     if event == "TRAINER_SHOW" then learnTried = {} end
-    C_Timer.After(0.3, function() pcall(L.readTrainer); pcall(L.autoLearn) end)
+    -- the list can still be empty right when the window opens: look again a moment later
+    for _, delay in ipairs({ 0.3, 1.2 }) do
+      C_Timer.After(delay, function()
+        pcall(L.readTrainer)
+        local ok, err = pcall(L.autoLearn)
+        if not ok then Print("couldn't learn at the trainer: " .. tostring(err)) end
+      end)
+    end
     return
   end
   if event == "GET_ITEM_INFO_RECEIVED" then soon(); return end
@@ -3894,6 +3911,25 @@ SlashCmdList.PROFESSIONWIZARD = function(msg)
     local list = alts()
     if #list == 0 then Print("no alts saved yet. Log in on them once (and open their bank).") end
     for _, c in ipairs(list) do Print(string.format("%s, saved %s", c.name or "?", ago(c.time))) end
+    return
+  end
+  if msg == "trainer" then
+    -- what LEARN AT TRAINER sees: open a trainer first
+    if not (GetNumTrainerServices and GetTrainerServiceInfo) then Print("no trainer API.") return end
+    local n = GetNumTrainerServices() or 0
+    Print(n .. " services, auto-learn " .. (ProfessionWizardDB.autoLearn == false and "off" or "on")
+      .. ", BuyTrainerService " .. (BuyTrainerService and "found" or "missing"))
+    local want = L.learnWants and L.learnWants() or {}
+    local names = {}
+    for name in pairs(want) do names[#names + 1] = name end
+    Print("routes want: " .. (#names > 0 and table.concat(names, ", ") or "nothing"))
+    for i = 1, math.min(n, 40) do
+      local name, sub, kind = GetTrainerServiceInfo(i)
+      if kind ~= "header" and kind ~= "used" then
+        Print(string.format("%d. %s [%s] %s%s", i, tostring(name), tostring(kind), tostring(sub or ""),
+          want[name or ""] and " <- wanted" or ""))
+      end
+    end
     return
   end
   if msg == "vendors" then

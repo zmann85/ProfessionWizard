@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- LEARN AT TRAINER could miss the trainer's list when it wasn't filled in yet as the window opened; it now looks
+  again a moment later, and says in chat if something goes wrong. `/pw trainer` lists what it sees.
+
 ## v1.7.0 (2026-11-19)
 
 ### Added
