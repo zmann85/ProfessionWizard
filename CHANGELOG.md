@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.7.0 (2026-11-19)
 
 ### Added
 - Talking to a trainer learns the recipes your routes use that it can teach you now, and the next rank when a
