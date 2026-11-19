@@ -723,6 +723,8 @@ end
 function L.findRoute(pid, from, to)
   local ctx = newCtx(pid, from)
   local cands, waiting, unpriced = {}, 0, {}
+  -- USE WHAT I HAVE: materials you own (bags, bank, mail, alts as counted) cost nothing until they run out
+  local owned = ProfessionWizardDB.useOwned and {} or nil
   for _, r in ipairs(recipes(pid).list) do
     if r.g > from and r.learn < to then
       local ok, plansCost, where = L.usable(r, from)
@@ -740,6 +742,12 @@ function L.findRoute(pid, from, to)
             if sp then back = sp * r.made else waiting = waiting + 1 end
           end
           cands[#cands + 1] = { r = r, mats = c, back = back, net = c - back, plans = plansCost or 0, where = where }
+          if owned then
+            -- per material: what one costs, so owned ones can be taken off below
+            local each = {}
+            for _, mt in ipairs(r.mats) do each[#each + 1] = { mt[1], mt[2], L.unitCost(mt[1], ctx, 0) or 0 } end
+            cands[#cands].each = each
+          end
         end
       end
     end
@@ -753,6 +761,15 @@ function L.findRoute(pid, from, to)
       local p = L.chance(cd.r, s)
       if p >= MIN_CHANCE then
         local score = (cd.net + PER_CRAFT) / p
+        if owned and cd.each then
+          local crafts, c = 1 / p, 0
+          for _, e in ipairs(cd.each) do
+            local id = e[1]
+            if owned[id] == nil then owned[id] = L.haveOf(id) end
+            c = c + e[3] * math.max(0, e[2] * crafts - owned[id])
+          end
+          score = (c - cd.back * crafts) + PER_CRAFT * crafts
+        end
         if cd.plans > 0 and not bought[cd.r.spell] then
           local span = 0
           for t = s, to - 1 do
@@ -762,6 +779,11 @@ function L.findRoute(pid, from, to)
         end
         if not bestScore or score < bestScore then best, bestScore = cd, score end
       end
+    end
+    if owned and best and best.each then
+      -- what this skill point uses up of what you own
+      local crafts = 1 / L.chance(best.r, s)
+      for _, e in ipairs(best.each) do owned[e[1]] = math.max(0, (owned[e[1]] or 0) - e[2] * crafts) end
     end
     local spell = best and best.r.spell or 0
     local first = best and not bought[spell] -- a recipe is paid for once, even if the route comes back to it
@@ -1847,9 +1869,24 @@ local function build()
   tip(opts.learn, "Learn at the trainer",
     "On: talking to a trainer learns the recipes your routes use that it can teach you now, and the next rank when a route needs it.",
     "Each one is listed in chat with what it cost. Off: you pick them yourself.")
+  -- routes that use up what you already own first (off unless switched on)
+  opts.owned = chip(opts, "USE WHAT I HAVE", 192)
+  opts.owned:SetPoint("TOP", opts.learn, "BOTTOM", 0, -4)
+  opts.owned:SetScript("OnClick", function(self)
+    ProfessionWizardDB.useOwned = not ProfessionWizardDB.useOwned
+    self:SetActive(ProfessionWizardDB.useOwned)
+    for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
+      for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
+    end
+    refresh()
+  end)
+  tip(opts.owned, "Use what I have",
+    "On: materials you already own count as free until they run out, so the route uses them before buying anything.",
+    "What counts as owned follows COUNT BANK, COUNT ALTS and COUNT MAIL.",
+    "Click FIND CHEAPEST ROUTE after changing this.")
   -- Color scheme: one swatch per scheme, like Itinerary's setting; picking one reloads the UI
   opts.schemeLbl = text(opts, 10, 1, 1, 1, 0.5)
-  opts.schemeLbl:SetPoint("TOPLEFT", opts.learn, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
+  opts.schemeLbl:SetPoint("TOPLEFT", opts.owned, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
   opts.swatches = {}
   for i, sc in ipairs(L.SCHEME_ORDER) do
     local key, label = sc[1], sc[2]
@@ -1876,7 +1913,7 @@ local function build()
     opts.swatches[i] = b
   end
   local hasItinerary = ItineraryDB and ItineraryDB.panel and true or false
-  local h = 88 + 26 + 22 + 22 + 10 + 12 + 4 + 18 + 8
+  local h = 88 + 26 + 22 + 22 + 22 + 10 + 12 + 4 + 18 + 8
   if hasItinerary then
     opts.follow = chip(opts, "SAME AS ITINERARY", 192)
     opts.follow:SetPoint("TOPLEFT", opts.schemeLbl, "BOTTOMLEFT", 0, -28)
@@ -1897,6 +1934,7 @@ local function build()
     self.mailp:SetActive(ProfessionWizardDB.mailPanel ~= false)
     self.special:SetActive(ProfessionWizardDB.special ~= false)
     self.learn:SetActive(ProfessionWizardDB.autoLearn ~= false)
+    self.owned:SetActive(ProfessionWizardDB.useOwned and true or false)
   end)
   setBtn:SetScript("OnClick", function()
     opts:SetShown(not opts:IsShown())

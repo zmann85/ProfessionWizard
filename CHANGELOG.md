@@ -6,6 +6,8 @@
 - Talking to a trainer learns the recipes your routes use that it can teach you now, and the next rank when a
   route goes past your cap. Each one is listed in chat with its cost; nothing is bought you can't afford.
   Settings: LEARN AT TRAINER (on by default).
+- Settings: USE WHAT I HAVE (off by default). Materials you already own count as free until they run out, so the
+  route spends them before anything you'd have to buy. What counts follows COUNT BANK, COUNT ALTS and COUNT MAIL.
 
 ### Fixed
 - Camping recipes (Mana Well, Camp Tent, Sharpening Wheel, the campfires, Anvil, Loom and the rest) are left out
