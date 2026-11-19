@@ -2,7 +2,19 @@
 
 ## Unreleased
 
+### Added
+- Settings: SPECIAL TRAINERS (on by default). Switch it off and routes only use recipes from the usual trainers,
+  recipes you know and bought recipes, never ones that need a questline or a single NPC somewhere.
+
 ### Fixed
+- Checked every recipe against a second WoW Forever source (timesaver.gg) and corrected 123 of them. Learn levels
+  only ever went up, so no route plans a recipe before you can learn it. Among them: Minor Healing Potion (55),
+  Healing Potion (135), the first-aid kits and poultices, the new chain and leather sets, the dyes, Shining Mithril
+  Helm, Prefect's Waistguard, the Hearts of the Mountain, the weaponsmith and Dark Iron 300 plans, and most of the
+  new cooking recipes, whose colours were also wrong (Swiftstrike Steak and Clam Linguine are 280 recipes, not 175).
+- Mooncloth Boots come from the quest Sacred Cloth, not a trainer. Draught of Water Walking, Refined Scale of
+  Onyxia and Tranquil Mechanical Yeti have no trainer either and show as special. Explosive Arrow and Mobile Alarm
+  are left out of routes: nothing is known to teach them.
 - The Discolored Healing Potion line (Lesser, normal, Greater, Superior) isn't taught by the usual alchemy
   trainers: the route now says "special trainer" and the tooltip names them (the Odd Child in Westfall or
   Apothecary Renferrel in Silverpine Forest, after a short questline). They were also planned 25 skill too early

@@ -25,4 +25,16 @@ ns.TRAINER_NOTES = {
   [1244646] = "the Odd Child in Westfall (Alliance) or Apothecary Renferrel at the Sepulcher in Silverpine Forest (Horde), after a short questline",
   [1244647] = "the Odd Child in Westfall (Alliance) or Apothecary Renferrel at the Sepulcher in Silverpine Forest (Horde), after a short questline",
   [1244648] = "the Odd Child in Westfall (Alliance) or Apothecary Renferrel at the Sepulcher in Silverpine Forest (Horde), after a short questline",
+  -- taught by a quest, not a trainer (timesaver.gg, 19 Nov 2026)
+  [19435] = "the quest Sacred Cloth",
+  -- no trainer teaches these and their source isn't confirmed
+  [11447] = "a quest or special source (not confirmed)",
+  [22430] = "a quest or special source (not confirmed)",
+  [26011] = "a quest or special source (not confirmed)",
+}
+
+-- recipes in the client data that nothing is known to teach in WoW Forever: routes never use them
+ns.NO_SOURCE = {
+  [12719] = true, -- Explosive Arrow
+  [12900] = true, -- Mobile Alarm
 }

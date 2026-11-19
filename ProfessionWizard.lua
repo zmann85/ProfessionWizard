@@ -633,12 +633,20 @@ function L.producers(id, pid)
   return out
 end
 
+-- may the route learn this from a trainer? Not for recipes with no known source, and not for special trainers
+-- (questline or one NPC) when that's switched off in the settings
+function L.trainable(r)
+  if not r.trainer or (ns.NO_SOURCE or {})[r.spell] then return false end
+  if (ns.TRAINER_NOTES or {})[r.spell] and ProfessionWizardDB.special == false then return false end
+  return true
+end
+
 -- can this be made on the way, as a material for something else?
 function L.canMake(r, ctx)
   if r.prof == MINING then return ctx.mining >= r.learn end
   if r.prof ~= ctx.pid then return false end
   if isKnown(r) then return true end
-  return r.trainer and r.learn <= ctx.skill
+  return L.trainable(r) and r.learn <= ctx.skill
 end
 
 function L.unitCost(id, ctx, depth)
@@ -676,7 +684,7 @@ end
 function L.usable(r, from)
   if r.creates == 0 and r.prof ~= 333 then return false end
   if isKnown(r) then return true, 0 end
-  if r.trainer then return true, 0 end
+  if L.trainable(r) then return true, 0 end
   if r.plans > 0 and ProfessionWizardDB.plans then
     local p, where = buyPrice(r.plans)
     if p then return true, p, where end
@@ -1561,6 +1569,8 @@ function L.makeStep(i)
       if (st.back or 0) > 0 then GameTooltip:AddDoubleLine("Vendor pays each", money(st.back), 0.8, 0.8, 0.8, 1, 1, 1) end
     end
     if isKnown(r) then GameTooltip:AddLine("You know this.", 0.4, 0.86, 0.5)
+    elseif r.trainer and (ns.NO_SOURCE or {})[r.spell] then
+      GameTooltip:AddLine("Not known to be learnable in WoW Forever, so routes leave it out.", 1, 0.82, 0.45, true)
     elseif r.trainer and (ns.TRAINER_NOTES or {})[r.spell] then
       GameTooltip:AddLine("Not taught by the usual trainers: learn it from " .. ns.TRAINER_NOTES[r.spell] .. ".", 1, 0.82, 0.45, true)
     elseif r.trainer then GameTooltip:AddLine("From your trainer.", 0.8, 0.8, 0.8)
@@ -1739,9 +1749,24 @@ local function build()
   end)
   tip(opts.mailp, "Mailbox panel",
     "On Send Mail: what your crafters still need from this character, with FILL MAIL to attach it.")
+  -- recipes from special trainers (a questline, or one NPC somewhere) may be used by routes unless switched off
+  opts.special = chip(opts, "SPECIAL TRAINERS", 192)
+  opts.special:SetPoint("TOP", opts.mailp, "BOTTOM", 0, -4)
+  opts.special:SetScript("OnClick", function(self)
+    ProfessionWizardDB.special = (ProfessionWizardDB.special == false)
+    self:SetActive(ProfessionWizardDB.special)
+    for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
+      for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
+    end
+    refresh()
+  end)
+  tip(opts.special, "Special trainers",
+    "On: routes may use recipes that only one NPC teaches, or that need a short questline first (like the Discolored potions).",
+    "Off: only recipes from the usual profession trainers, recipes you know, and bought recipes.",
+    "Click FIND CHEAPEST ROUTE after changing this.")
   -- Color scheme: one swatch per scheme, like Itinerary's setting; picking one reloads the UI
   opts.schemeLbl = text(opts, 10, 1, 1, 1, 0.5)
-  opts.schemeLbl:SetPoint("TOPLEFT", opts.mailp, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
+  opts.schemeLbl:SetPoint("TOPLEFT", opts.special, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
   opts.swatches = {}
   for i, sc in ipairs(L.SCHEME_ORDER) do
     local key, label = sc[1], sc[2]
@@ -1768,7 +1793,7 @@ local function build()
     opts.swatches[i] = b
   end
   local hasItinerary = ItineraryDB and ItineraryDB.panel and true or false
-  local h = 88 + 26 + 10 + 12 + 4 + 18 + 8
+  local h = 88 + 26 + 22 + 10 + 12 + 4 + 18 + 8
   if hasItinerary then
     opts.follow = chip(opts, "SAME AS ITINERARY", 192)
     opts.follow:SetPoint("TOPLEFT", opts.schemeLbl, "BOTTOMLEFT", 0, -28)
@@ -1787,6 +1812,7 @@ local function build()
     for _, b in ipairs(self.swatches) do b.ring:SetShown(b.key == shown) end
     if self.follow then self.follow:SetActive(cur == nil) end
     self.mailp:SetActive(ProfessionWizardDB.mailPanel ~= false)
+    self.special:SetActive(ProfessionWizardDB.special ~= false)
   end)
   setBtn:SetScript("OnClick", function()
     opts:SetShown(not opts:IsShown())
@@ -2202,7 +2228,7 @@ local function scanList(pid, from, to)
   for _, r in ipairs(recipes(pid).list) do
     if r.g > from and r.learn < to and (r.creates > 0 or r.prof == 333) then
       local known = isKnown(r)
-      if known or r.trainer or (r.plans > 0 and ProfessionWizardDB.plans) then
+      if known or L.trainable(r) or (r.plans > 0 and ProfessionWizardDB.plans) then
         for _, m in ipairs(r.mats) do add(m[1], 0) end
         if not known and not r.trainer then add(r.plans, 2) end
       end
@@ -2947,7 +2973,7 @@ refresh = function()
         else
           l.go:Hide(); l.amt:Hide()
           l.info:SetWidth(W - PAD * 2 - 332)
-          if not openY and tsProf ~= pid and (isKnown(r) or (r.trainer and r.learn <= cur)) then
+          if not openY and tsProf ~= pid and (isKnown(r) or (L.trainable(r) and r.learn <= cur)) then
             openY = y - stepH + (stepH - 20) / 2
             l.info:SetWidth(W - PAD * 2 - 332 - 124)
           end
@@ -3483,11 +3509,11 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     ProfessionWizardDB.pos = nil -- the old account-wide place: each character now keeps its own
     -- recipe data corrected (recipes that need plans were marked as taught by trainers): every saved route
     -- shows as out of date, so FIND CHEAPEST ROUTE plans around them again
-    if (ProfessionWizardDB.dataVersion or 1) < 5 then
+    if (ProfessionWizardDB.dataVersion or 1) < 6 then
       for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
         for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
       end
-      ProfessionWizardDB.dataVersion = 5
+      ProfessionWizardDB.dataVersion = 6
     end
     pcall(L.importOthers)
     build()
