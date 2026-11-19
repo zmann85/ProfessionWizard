@@ -3303,7 +3303,6 @@ local learnTried = {}
 function L.autoLearn()
   if ProfessionWizardDB.autoLearn == false then return end
   if not (GetNumTrainerServices and GetTrainerServiceInfo and BuyTrainerService) then return end
-  if SetTrainerServiceTypeFilter then pcall(SetTrainerServiceTypeFilter, "available", 1) end
   local want, rankFor = L.learnWants()
   L.autoLearnRun(want, rankFor)
 end
@@ -3371,7 +3370,6 @@ function L.trainerButton()
     b:SetPoint("BOTTOMLEFT", tf, "TOPLEFT", 60, 2)
     b:SetFrameStrata("HIGH")
     b:SetScript("OnClick", function()
-      if SetTrainerServiceTypeFilter then pcall(SetTrainerServiceTypeFilter, "available", 1) end
       local want, rankFor = L.learnWants()
       if L.autoLearnRun(want, rankFor, true) == 0 then Print("nothing here that your routes need right now.") end
     end)
