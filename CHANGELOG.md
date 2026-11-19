@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.3.1 (2026-11-19)
 
 ### Fixed
 - 25 trainer recipes could be planned before a trainer teaches them. Among them Mana Well and the other new
