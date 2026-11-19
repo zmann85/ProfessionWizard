@@ -2,11 +2,18 @@
 
 ## Unreleased
 
+### Added
+- Training costs count toward the route. Each trainer recipe carries its fee (shown next to "trainer" on its step
+  and in its tooltip), so a cheap recipe with a dear fee can lose to a better one, and every TRAIN row adds the
+  rank's price (Journeyman 5s, Expert 50s, Artisan 5g). "Whole route" now covers materials, recipes and training.
+- Trainer windows you open are read, so their real fees replace the built-in ones from then on.
+
 ### Changed
 - The window no longer grows past 10 craft steps and 12 materials: both lists scroll with the mouse wheel, and
   their headings show which part you're looking at (e.g. "1-10 of 14").
 
 ### Fixed
+- A recipe the route came back to later was paid for twice in "Whole route".
 - "Whole route" only added up the steps that fit on screen, so on a long route it could be less than "Still to
   buy". It now covers every step.
 - "a Alchemy trainer" now reads "an Alchemy trainer".

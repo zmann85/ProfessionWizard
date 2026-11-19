@@ -635,6 +635,23 @@ function L.producers(id, pid)
   return out
 end
 
+-- what a trainer charges for it: what you saw at a trainer, else the data, else nothing
+function L.trainCost(r)
+  local seen = ProfessionWizardDB.trainCost and ProfessionWizardDB.trainCost[r.name]
+  return seen or (ns.TRAIN_COST or {})[r.spell] or 0
+end
+
+-- read the trainer window, so what it charges is known from then on
+function L.readTrainer()
+  if not (GetNumTrainerServices and GetTrainerServiceInfo and GetTrainerServiceCost) then return end
+  ProfessionWizardDB.trainCost = ProfessionWizardDB.trainCost or {}
+  for i = 1, GetNumTrainerServices() or 0 do
+    local name, _, kind = GetTrainerServiceInfo(i)
+    local cost = GetTrainerServiceCost(i)
+    if name and kind ~= "header" and cost and cost > 0 then ProfessionWizardDB.trainCost[name] = cost end
+  end
+end
+
 -- may the route learn this from a trainer? Not for recipes with no known source, and not for special trainers
 -- (questline or one NPC) when that's switched off in the settings
 function L.trainable(r)
@@ -693,7 +710,7 @@ function L.usable(r, from)
   if r.creates == 0 and r.prof ~= 333 then return false end
   if L.onCooldown(r) then return false end
   if isKnown(r) then return true, 0 end
-  if L.trainable(r) then return true, 0 end
+  if L.trainable(r) then return true, L.trainCost(r), "trainer" end
   if r.plans > 0 and ProfessionWizardDB.plans then
     local p, where = buyPrice(r.plans)
     if p then return true, p, where end
@@ -745,12 +762,13 @@ function L.findRoute(pid, from, to)
       end
     end
     local spell = best and best.r.spell or 0
+    local first = best and not bought[spell] -- a recipe is paid for once, even if the route comes back to it
     if best then bought[spell] = true end
     if cur and cur.spell == spell then
       cur.to = s + 1
     else
       cur = { spell = spell, from = s, to = s + 1 }
-      if best then cur.plans, cur.where = best.plans, best.where end
+      if best then cur.plans, cur.where = first and best.plans or 0, best.where end
       segs[#segs + 1] = cur
     end
   end
@@ -811,7 +829,8 @@ local function plan(route, cur, target)
         a = c
       end
     end
-    segs[#segs + 1] = { from = a, to = seg.to, spell = seg.spell, plans = seg.plans, where = seg.where }
+    -- only the first part pays for the recipe
+    segs[#segs + 1] = { from = a, to = seg.to, spell = seg.spell, plans = a == seg.from and seg.plans or 0, where = seg.where }
   end
   for _, seg in ipairs(segs) do
     local a, b = math.max(cur, seg.from), math.min(target, seg.to)
@@ -1624,6 +1643,8 @@ function L.makeStep(i)
       else
         GameTooltip:AddLine("From your trainer.", 0.8, 0.8, 0.8)
       end
+      local fee = L.trainCost(r)
+      if fee > 0 then GameTooltip:AddDoubleLine("Training costs", money(fee), 0.8, 0.8, 0.8, 1, 1, 1) end
     elseif r.plans > 0 then
       local _, link = GetItemInfo(r.plans)
       GameTooltip:AddLine("Needs " .. (link or "a recipe item") .. ", not taught by trainers.", 1, 0.82, 0.45, true)
@@ -2955,7 +2976,7 @@ refresh = function()
   for _, st in ipairs(steps) do
     if cap and (st.from == 75 or st.from == 150 or st.from == 225) and st.from >= cap and ns.rankInfo then
       local rk, where = ns.rankInfo(pid, st.from, profName(pid))
-      if rk then stepRows[#stepRows + 1] = { rankRow = rk, where = where, from = st.from } end
+      if rk then stepRows[#stepRows + 1] = { rankRow = rk, where = where, from = st.from, rankCost = ns.rankCost(pid, st.from) } end
     end
     stepRows[#stepRows + 1] = st
   end
@@ -2993,7 +3014,9 @@ refresh = function()
       st.matCost, st.back = mc, back
       matTotal = matTotal + mc * st.crafts
       vendorBack = vendorBack + back * st.crafts
-      if not isKnown(r) and not r.trainer and r.plans > 0 then plansTotal = plansTotal + (st.plans or 0) end
+      if not isKnown(r) then plansTotal = plansTotal + (st.plans or 0) end
+    elseif st.rankRow then
+      plansTotal = plansTotal + (st.rankCost or 0)
     end
   end
   -- scrolling: show VIS_STEPS of them from the scroll position
@@ -3017,7 +3040,8 @@ refresh = function()
         l.name:SetText(warm .. "TRAIN " .. rk.name:upper() .. "|r")
         l.crafts:SetText("")
         l.info:SetWidth(W - PAD * 2 - 332)
-        l.info:SetText(warm .. (st.where or ("a " .. rk.name .. " trainer")) .. "|r  ·  level " .. rk.level)
+        l.info:SetText(warm .. (st.where or ("a " .. rk.name .. " trainer")) .. "|r  ·  level " .. rk.level
+          .. (st.rankCost and ("  ·  " .. money(st.rankCost)) or ""))
         l.go:Hide(); l.amt:Hide()
       elseif st.gap then
         l.name:SetText(red .. "no recipe found|r")
@@ -3036,7 +3060,9 @@ refresh = function()
         if not isKnown(r) then
           -- where the recipe comes from (and what it costs when it's an item), then when you can learn it
           if r.trainer then
-            info = info .. "  ·  " .. warm .. ((ns.TRAINER_NOTES or {})[r.spell] and "special trainer" or "trainer") .. "|r"
+            local fee = L.trainCost(r)
+            info = info .. "  ·  " .. warm .. ((ns.TRAINER_NOTES or {})[r.spell] and "special trainer" or "trainer")
+              .. (fee > 0 and (" " .. money(fee)) or "") .. "|r"
           elseif r.plans > 0 then
             local rp, where = buyPrice(r.plans)
             if rp then
@@ -3187,7 +3213,7 @@ refresh = function()
     foot = "|cffffffffStill to buy: ~" .. money(cost) .. "|r"
   end
   if matTotal > 0 then
-    foot = foot .. "\n" .. string.format("Whole route: ~%s in materials and recipes", money(matTotal + plansTotal))
+    foot = foot .. "\n" .. string.format("Whole route: ~%s in materials, recipes and training", money(matTotal + plansTotal))
     if vendorBack > 0 then foot = foot .. string.format("  ·  selling what you craft to a vendor gets ~%s back", money(vendorBack)) end
   end
   frame.foot:SetText(foot)
@@ -3613,18 +3639,18 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     ProfessionWizardDB.pos = nil -- the old account-wide place: each character now keeps its own
     -- recipe data corrected (recipes that need plans were marked as taught by trainers): every saved route
     -- shows as out of date, so FIND CHEAPEST ROUTE plans around them again
-    if (ProfessionWizardDB.dataVersion or 1) < 7 then
+    if (ProfessionWizardDB.dataVersion or 1) < 8 then
       for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
         for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
       end
-      ProfessionWizardDB.dataVersion = 7
+      ProfessionWizardDB.dataVersion = 8
     end
     pcall(L.importOthers)
     build()
     pcall(L.setupMinimap)
     for _, e in ipairs({ "BAG_UPDATE_DELAYED", "SKILL_LINES_CHANGED", "CHAT_MSG_SKILL", "GET_ITEM_INFO_RECEIVED",
       "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYERBANKSLOTS_CHANGED", "PLAYER_LOGIN", "PLAYER_LOGOUT",
-      "MAIL_SHOW", "MAIL_CLOSED", "MAIL_INBOX_UPDATE", "MAIL_SEND_SUCCESS", "MAIL_FAILED", "MERCHANT_SHOW",
+      "MAIL_SHOW", "MAIL_CLOSED", "MAIL_INBOX_UPDATE", "MAIL_SEND_SUCCESS", "MAIL_FAILED", "MERCHANT_SHOW", "TRAINER_SHOW", "TRAINER_UPDATE",
       "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE",
       "CRAFT_SHOW", "CRAFT_CLOSE", "CRAFT_UPDATE", "PLAYER_REGEN_ENABLED",
       "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "AUCTION_ITEM_LIST_UPDATE", "MAIL_SEND_INFO_UPDATE",
@@ -3686,6 +3712,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     soon(); return
   end
   if event == "MERCHANT_SHOW" then C_Timer.After(0.3, function() pcall(L.readMerchant) end); return end
+  if event == "TRAINER_SHOW" or event == "TRAINER_UPDATE" then C_Timer.After(0.3, function() pcall(L.readTrainer) end); return end
   if event == "GET_ITEM_INFO_RECEIVED" then soon(); return end
   if event == "BAG_UPDATE_DELAYED" then recipeCache = nil end
   if event == "MAIL_SHOW" then mailShown = true end
