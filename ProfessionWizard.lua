@@ -3753,11 +3753,11 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     ProfessionWizardDB.pos = nil -- the old account-wide place: each character now keeps its own
     -- recipe data corrected (recipes that need plans were marked as taught by trainers): every saved route
     -- shows as out of date, so FIND CHEAPEST ROUTE plans around them again
-    if (ProfessionWizardDB.dataVersion or 1) < 9 then
+    if (ProfessionWizardDB.dataVersion or 1) < 10 then
       for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
         for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
       end
-      ProfessionWizardDB.dataVersion = 9
+      ProfessionWizardDB.dataVersion = 10
     end
     pcall(L.importOthers)
     build()
