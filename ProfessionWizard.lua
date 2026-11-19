@@ -1561,6 +1561,8 @@ function L.makeStep(i)
       if (st.back or 0) > 0 then GameTooltip:AddDoubleLine("Vendor pays each", money(st.back), 0.8, 0.8, 0.8, 1, 1, 1) end
     end
     if isKnown(r) then GameTooltip:AddLine("You know this.", 0.4, 0.86, 0.5)
+    elseif r.trainer and (ns.TRAINER_NOTES or {})[r.spell] then
+      GameTooltip:AddLine("Not taught by the usual trainers: learn it from " .. ns.TRAINER_NOTES[r.spell] .. ".", 1, 0.82, 0.45, true)
     elseif r.trainer then GameTooltip:AddLine("From your trainer.", 0.8, 0.8, 0.8)
     elseif r.plans > 0 then
       local _, link = GetItemInfo(r.plans)
@@ -2913,7 +2915,7 @@ refresh = function()
         if not isKnown(r) then
           -- where the recipe comes from (and what it costs when it's an item), then when you can learn it
           if r.trainer then
-            info = info .. "  ·  " .. warm .. "trainer|r"
+            info = info .. "  ·  " .. warm .. ((ns.TRAINER_NOTES or {})[r.spell] and "special trainer" or "trainer") .. "|r"
           elseif r.plans > 0 then
             local rp, where = buyPrice(r.plans)
             if rp then
@@ -3481,11 +3483,11 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     ProfessionWizardDB.pos = nil -- the old account-wide place: each character now keeps its own
     -- recipe data corrected (recipes that need plans were marked as taught by trainers): every saved route
     -- shows as out of date, so FIND CHEAPEST ROUTE plans around them again
-    if (ProfessionWizardDB.dataVersion or 1) < 4 then
+    if (ProfessionWizardDB.dataVersion or 1) < 5 then
       for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
         for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
       end
-      ProfessionWizardDB.dataVersion = 4
+      ProfessionWizardDB.dataVersion = 5
     end
     pcall(L.importOthers)
     build()

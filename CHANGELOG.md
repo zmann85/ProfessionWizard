@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- The Discolored Healing Potion line (Lesser, normal, Greater, Superior) isn't taught by the usual alchemy
+  trainers: the route now says "special trainer" and the tooltip names them (the Odd Child in Westfall or
+  Apothecary Renferrel in Silverpine Forest, after a short questline). They were also planned 25 skill too early
+  (Lesser Discolored Healing Potion is learned at 85, not 60). Saved routes show as out of date once more.
+
 ## v1.3.1 (2026-11-19)
 
 ### Fixed

@@ -16,3 +16,13 @@ for _, id in ipairs({
   10647, 10648,                              -- engineer's ink, blank parchment
   2930, 5173, 8923, 8924, 2931,              -- poison reagents
 }) do ns.VENDOR_ITEMS[id] = true end
+
+-- Trainer recipes that the ordinary profession trainers don't teach: where to learn them instead.
+-- The route shows these as "special trainer", the tooltip says who.
+ns.TRAINER_NOTES = {
+  -- the Discolored Healing Potion line (new in WoW Forever)
+  [1244645] = "the Odd Child in Westfall (Alliance) or Apothecary Renferrel at the Sepulcher in Silverpine Forest (Horde), after a short questline",
+  [1244646] = "the Odd Child in Westfall (Alliance) or Apothecary Renferrel at the Sepulcher in Silverpine Forest (Horde), after a short questline",
+  [1244647] = "the Odd Child in Westfall (Alliance) or Apothecary Renferrel at the Sepulcher in Silverpine Forest (Horde), after a short questline",
+  [1244648] = "the Odd Child in Westfall (Alliance) or Apothecary Renferrel at the Sepulcher in Silverpine Forest (Horde), after a short questline",
+}
