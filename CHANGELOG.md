@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.3.0 (2026-11-19)
 
 ### New
 - With Auctionator, SEARCH MISSING and clicking a material search for the amount you still need, so Auctionator's
