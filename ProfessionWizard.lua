@@ -792,7 +792,19 @@ end
 local function plan(route, cur, target)
   local steps = {}
   local list = recipes(route.pid)
+  -- cut every segment at 75, 150 and 225: you can't craft past a cap before training the next rank
+  local segs = {}
   for _, seg in ipairs(route.segs) do
+    local a = seg.from
+    for _, c in ipairs({ 75, 150, 225 }) do
+      if a < c and c < seg.to then
+        segs[#segs + 1] = { from = a, to = c, spell = seg.spell, plans = seg.plans, where = seg.where }
+        a = c
+      end
+    end
+    segs[#segs + 1] = { from = a, to = seg.to, spell = seg.spell, plans = seg.plans, where = seg.where }
+  end
+  for _, seg in ipairs(segs) do
     local a, b = math.max(cur, seg.from), math.min(target, seg.to)
     if a < b then
       local r = list.bySpell[seg.spell]
@@ -804,7 +816,7 @@ local function plan(route, cur, target)
         end
         local crafts = math.ceil(exp * (1 + (ProfessionWizardDB.buffer or 0) / 100) - 0.001)
         local last = steps[#steps]
-        if last and last.r == r then
+        if last and last.r == r and a ~= 75 and a ~= 150 and a ~= 225 then
           last.to = b; last.crafts = last.crafts + crafts
         else
           steps[#steps + 1] = { r = r, from = a, to = b, crafts = crafts, plans = seg.plans, where = seg.where }
@@ -1557,6 +1569,17 @@ function L.makeStep(i)
   l.go:HookScript("OnLeave", function() GameTooltip:Hide() end)
   l:SetScript("OnEnter", function(self)
     local st = self.st
+    if st and st.rankRow then
+      local rk = st.rankRow
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:AddLine("Train " .. rk.name .. " " .. profName(shownProf() or 0), 1, 1, 1)
+      GameTooltip:AddLine(string.format("Your skill stops at %d until you do. It needs skill %d and level %d.", rk.cap,
+        rk.skill, rk.level), 0.8, 0.8, 0.8, true)
+      if st.where then GameTooltip:AddLine("Where: " .. st.where .. ".", 1, 0.82, 0.45, true) end
+      GameTooltip:AddLine("The step before this one stops at " .. rk.cap .. ", so no crafts are wasted.", 0.6, 0.6, 0.6, true)
+      GameTooltip:Show()
+      return
+    end
     if not st or not st.r then return end
     local r = st.r
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -1567,10 +1590,6 @@ function L.makeStep(i)
     if st.matCost then
       GameTooltip:AddDoubleLine("Materials each", money(st.matCost), 0.8, 0.8, 0.8, 1, 1, 1)
       if (st.back or 0) > 0 then GameTooltip:AddDoubleLine("Vendor pays each", money(st.back), 0.8, 0.8, 0.8, 1, 1, 1) end
-    end
-    if st.rank then
-      GameTooltip:AddLine(string.format("Train %s to go past %d (needs skill %d and level %d): %s.", st.rank.name,
-        st.rank.cap, st.rank.skill, st.rank.level, st.rankWhere or "your trainer"), 1, 0.82, 0.45, true)
     end
     if isKnown(r) then GameTooltip:AddLine("You know this.", 0.4, 0.86, 0.5)
     elseif r.trainer and (ns.NO_SOURCE or {})[r.spell] then
@@ -2892,7 +2911,7 @@ refresh = function()
   if mining > 0 then sub = "Mining " .. mining .. "  ·  " .. sub end
   if route then sub = "route from " .. ago(route.time) .. (route.dirty and (warm .. " (out of date)|r") or "") .. "  ·  " .. sub end
   if cap and cap < target and cap < 300 then
-    local rank = (cap < 75 and "Journeyman (level 10)") or (cap < 150 and "Expert (level 20)") or (cap < 225 and "Artisan (level 35)") or "the next rank"
+    local rank = (cap <= 75 and "Journeyman (level 10)") or (cap <= 150 and "Expert (level 20)") or (cap <= 225 and "Artisan (level 35)") or "the next rank"
     sub = sub .. "  ·  " .. warm .. "your cap is " .. cap .. ": train " .. rank .. "|r"
   end
   if not L.seenProf(pid) then sub = sub .. "  ·  " .. warm .. "open your " .. profName(pid) .. " window once|r" end
@@ -2900,6 +2919,15 @@ refresh = function()
 
   -- steps
   local steps = route and plan(route, cur, target) or {}
+  -- a row "train Expert" where the route reaches a cap you have (or will have) to train past
+  local rows = {}
+  for _, st in ipairs(steps) do
+    if cap and (st.from == 75 or st.from == 150 or st.from == 225) and st.from >= cap and ns.rankInfo then
+      local rk, where = ns.rankInfo(pid, st.from, profName(pid))
+      if rk then rows[#rows + 1] = { rankRow = rk, where = where, from = st.from } end
+    end
+    rows[#rows + 1] = st
+  end
   local ctx = newCtx(pid, cur)
   local y = 160
   if job then jobBusy() end -- a batch the game ended quietly stops showing as running
@@ -2926,14 +2954,20 @@ refresh = function()
   local vendorBack, matTotal, plansTotal = 0, 0, 0
   local stepH = STEP_H + 4
   local openY -- first step that could be crafted once the window is open
-  local rankShown = {}
   for i, l in ipairs(stepLines) do
-    local st = steps[i]
+    local st = rows[i]
     if st then
       l.st = st
       l:ClearAllPoints(); l:SetPoint("TOPLEFT", PAD, -y); y = y + stepH
-      l.range:SetText(st.from .. "-" .. st.to)
-      if st.gap then
+      l.range:SetText(st.rankRow and ("at " .. st.from) or (st.from .. "-" .. st.to))
+      if st.rankRow then
+        local rk = st.rankRow
+        l.name:SetText(warm .. "TRAIN " .. rk.name:upper() .. "|r")
+        l.crafts:SetText("")
+        l.info:SetWidth(W - PAD * 2 - 332)
+        l.info:SetText(warm .. (st.where or ("a " .. rk.name .. " trainer")) .. "|r  ·  level " .. rk.level)
+        l.go:Hide(); l.amt:Hide()
+      elseif st.gap then
         l.name:SetText(red .. "no recipe found|r")
         l.crafts:SetText("")
         l.info:SetText("missing AH prices? scan, then FIND CHEAPEST ROUTE")
@@ -2967,25 +3001,12 @@ refresh = function()
           end
           if r.learn > cur then info = info .. "  ·  at " .. r.learn end
         end
-        -- the first step that goes past a rank you don't have yet says so (the tooltip says where)
-        st.rank, st.rankWhere = nil, nil
-        if cap and ns.rankInfo then
-          for _, rk in ipairs(ns.RANKS) do
-            if rk.cap >= cap and rk.cap < target and st.to > rk.cap and not rankShown[rk.cap] then
-              rankShown[rk.cap] = true
-              st.rank = rk
-              local _, where = ns.rankInfo(pid, rk.cap, profName(pid))
-              st.rankWhere = where
-              info = info .. "  ·  " .. warm .. "train " .. rk.name .. " at " .. rk.cap .. "|r"
-              break
-            end
-          end
-        end
         if Ench.slotOf(r) then
           local tg = Ench.target(r)
           info = info .. "  ·  " .. (tg and ("on " .. (tg.link or "?")) or (warm .. "needs a cheap " .. Ench.what(r) .. " in your bags|r"))
         end
-        local w = tsOpen and findRecipe(r) or nil
+        -- past your cap a craft gives no skill, so no CRAFT button until you've trained
+        local w = tsOpen and not (cap and cap < 300 and st.from >= cap) and findRecipe(r) or nil
         if l.key ~= r.spell then l.custom = nil; l.key = r.spell end
         l.rec, l.label = w, r.name
         if w then

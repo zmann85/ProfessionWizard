@@ -3,11 +3,14 @@
 ## Unreleased
 
 ### Added
-- Where to train the next rank: the first route step past 75, 150 or 225 that your rank doesn't cover yet says
-  "train Expert at 150" (or Journeyman, Artisan), and its tooltip names the trainer for your faction and the
-  skill and level you need. Cooking and First Aid name the book or the quest instead.
+- Routes stop at your rank cap. A step that went from 137 to 163 is now 137-150, then a TRAIN EXPERT row that
+  names the trainer for your faction (or the book or quest for Cooking and First Aid) and the level needed,
+  then 150-163. CRAFT stays hidden on steps past your cap, so no crafts and materials are wasted at 150.
 - Trainer recipes past 150 or 225 name a trainer of that rank in their tooltip, since city trainers of a lower
   rank don't teach them.
+
+### Fixed
+- At a cap of 150 the header said "train Artisan (level 35)"; it now says Expert (level 20).
 
 ## v1.4.0 (2026-11-19)
 
