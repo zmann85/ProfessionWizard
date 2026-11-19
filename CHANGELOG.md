@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.7.1 (2026-11-19)
 
 ### Fixed
 - LEARN AT TRAINER never learned anything: WoW Forever's trainer list gives its entries in a different order than
