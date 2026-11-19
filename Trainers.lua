@@ -57,7 +57,10 @@ function ns.rankInfo(pid, cap, profName)
       local t = (ns.RANK_TRAINERS[pid] or {})[cap]
       local f = UnitFactionGroup("player") == "Horde" and "H" or "A"
       local where = t and t[f]
-      if not where and cap == 75 then where = string.format(JOURNEYMAN, profName or "profession") end
+      if not where and cap == 75 then
+        local n = profName or "profession"
+        where = string.format(JOURNEYMAN, n):gsub("^a ([AEIOUaeiou])", "an %1")
+      end
       return rk, where
     end
   end

@@ -1000,6 +1000,15 @@ end
 ---------------------------------------------------------------------------
 local tsOpen, tsProf, tsMode, recipeCache = false, nil, nil, nil
 local refresh -- set further down
+
+-- scrolling the CRAFTS and MATERIALS lists: how far down each one is
+L.scroll = { step = 0, mat = 0 }
+L.VIS_STEPS, L.VIS_MATS = 10, 12
+function L.scrollList(which, d)
+  L.scroll[which] = math.max(0, (L.scroll[which] or 0) + d)
+  refresh() -- clamps it to the list
+end
+
 local job     -- the batch being crafted: { name, label, total, done, st, et, casting, stopped }
 
 function L.itemFromLink(link) return link and tonumber(link:match("item:(%d+)")) end
@@ -2034,6 +2043,10 @@ local function build()
   frame.stepsHead = text(frame, 11, ar, ag, ab, 0.9)
   frame.stepsHead:SetText("CRAFTS")
   for i = 1, MAX_STEPS do stepLines[i] = L.makeStep(i) end
+  for _, l in ipairs(stepLines) do
+    l:EnableMouseWheel(true)
+    l:SetScript("OnMouseWheel", function(_, d) L.scrollList("step", -d) end)
+  end
 
   frame.matHead = text(frame, 11, ar, ag, ab, 0.9)
   frame.matHead:SetText("MATERIALS")
@@ -2042,6 +2055,11 @@ local function build()
   frame.colStat = text(frame, 11, 1, 1, 1, 0.4); frame.colStat:SetText("STILL NEED")
 
   for i = 1, MAX_ROWS do rows[i] = L.makeRow(i) end
+  -- both lists scroll with the mouse wheel once they're longer than fits
+  for _, r in ipairs(rows) do
+    r:EnableMouseWheel(true)
+    r:SetScript("OnMouseWheel", function(_, d) L.scrollList("mat", -d) end)
+  end
   frame.more = text(frame, 11, 1, 1, 1, 0.45)
 
   frame.foot = text(frame, 11, 1, 1, 1, 0.55)
@@ -2965,10 +2983,31 @@ refresh = function()
   frame.stepsHead:ClearAllPoints(); frame.stepsHead:SetPoint("TOPLEFT", PAD, -y)
   y = y + 16
   local vendorBack, matTotal, plansTotal = 0, 0, 0
+  -- what each step costs, and the whole route's totals (all steps, not only the ones in view)
+  for _, st in ipairs(stepRows) do
+    local r = st.r
+    if r then
+      local mc = 0
+      for _, m in ipairs(r.mats) do mc = mc + (L.unitCost(m[1], ctx, 0) or 0) * m[2] end
+      local back = r.creates > 0 and (L.sellPrice(r.creates) or 0) * r.made or 0
+      st.matCost, st.back = mc, back
+      matTotal = matTotal + mc * st.crafts
+      vendorBack = vendorBack + back * st.crafts
+      if not isKnown(r) and not r.trainer and r.plans > 0 then plansTotal = plansTotal + (st.plans or 0) end
+    end
+  end
+  -- scrolling: show VIS_STEPS of them from the scroll position
+  local nVis = math.min(L.VIS_STEPS, #stepLines)
+  local maxOff = math.max(0, #stepRows - nVis)
+  if L.scroll.pid ~= pid then L.scroll.pid, L.scroll.step, L.scroll.mat = pid, 0, 0 end
+  L.scroll.step = math.min(L.scroll.step, maxOff)
+  local sOff = L.scroll.step
+  frame.stepsHead:SetText(#stepRows > nVis and string.format("CRAFTS  " .. dim .. "%d-%d of %d  ·  scroll for more|r",
+    sOff + 1, sOff + nVis, #stepRows) or "CRAFTS")
   local stepH = STEP_H + 4
   local openY -- first step that could be crafted once the window is open
   for i, l in ipairs(stepLines) do
-    local st = stepRows[i]
+    local st = i <= nVis and stepRows[i + sOff] or nil
     if st then
       l.st = st
       l:ClearAllPoints(); l:SetPoint("TOPLEFT", PAD, -y); y = y + stepH
@@ -2989,13 +3028,8 @@ refresh = function()
         local r = st.r
         l.name:SetText(L.colorAt(r, st.from) .. r.name .. "|r")
         l.crafts:SetText("x" .. st.crafts)
-        -- cost per craft from today's prices
-        local mc = 0
-        for _, m in ipairs(r.mats) do mc = mc + (L.unitCost(m[1], ctx, 0) or 0) * m[2] end
-        local back = r.creates > 0 and (L.sellPrice(r.creates) or 0) * r.made or 0
-        st.matCost, st.back = mc, back
-        matTotal = matTotal + mc * st.crafts
-        vendorBack = vendorBack + back * st.crafts
+        -- cost per craft from today's prices (worked out above)
+        local mc, back = st.matCost or 0, st.back or 0
         -- money, not time: what one craft costs after the vendor pays for the result
         local net = mc - back
         local info = net >= 0 and ("costs " .. money(net) .. "/craft") or ("+" .. money(-net) .. "/craft profit")
@@ -3010,7 +3044,6 @@ refresh = function()
             else
               info = info .. "  ·  " .. warm .. "recipe: no price yet|r"
             end
-            plansTotal = plansTotal + (st.plans or 0)
           end
           if r.learn > cur then info = info .. "  ·  at " .. r.learn end
         end
@@ -3080,8 +3113,13 @@ refresh = function()
       if p then cost = cost + p * row.missing end
     end
   end
+  local mVis = math.min(L.VIS_MATS, #rows)
+  L.scroll.mat = math.min(L.scroll.mat, math.max(0, #list - mVis))
+  local mOff = L.scroll.mat
+  frame.matHead:SetText(#list > mVis and string.format("MATERIALS  " .. dim .. "%d-%d of %d  ·  scroll|r",
+    mOff + 1, mOff + mVis, #list) or "MATERIALS")
   for i, r in ipairs(rows) do
-    local row = list[i]
+    local row = i <= mVis and list[i + mOff] or nil
     if row then
       r.row = row
       r:ClearAllPoints(); r:SetPoint("TOPLEFT", PAD, -y); y = y + ROW_H
@@ -3135,13 +3173,7 @@ refresh = function()
       r:Hide()
     end
   end
-  if #list > #rows then
-    frame.more:SetText(string.format("+ %d more (they're in SEARCH MISSING)", #list - #rows))
-    frame.more:ClearAllPoints(); frame.more:SetPoint("TOPLEFT", PAD + 22, -y - 2); frame.more:Show()
-    y = y + 16
-  else
-    frame.more:Hide()
-  end
+  frame.more:Hide() -- the list scrolls instead
 
   y = y + 8
   local foot

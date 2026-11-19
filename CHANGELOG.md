@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- The window no longer grows past 10 craft steps and 12 materials: both lists scroll with the mouse wheel, and
+  their headings show which part you're looking at (e.g. "1-10 of 14").
+
+### Fixed
+- "Whole route" only added up the steps that fit on screen, so on a long route it could be less than "Still to
+  buy". It now covers every step.
+- "a Alchemy trainer" now reads "an Alchemy trainer".
+
 ## v1.5.0 (2026-11-19)
 
 ### Added
