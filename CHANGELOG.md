@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.5.0 (2026-11-19)
 
 ### Added
 - Routes stop at your rank cap. A step that went from 137 to 163 is now 137-150, then a TRAIN EXPERT row that
