@@ -7,6 +7,10 @@
   route goes past your cap. Each one is listed in chat with its cost; nothing is bought you can't afford.
   Settings: LEARN AT TRAINER (on by default).
 
+### Fixed
+- Camping recipes (Mana Well, Camp Tent, Sharpening Wheel, the campfires, Anvil, Loom and the rest) are left out
+  of routes: they give no skill points. Saved routes show as out of date.
+
 ## v1.6.0 (2026-11-19)
 
 ### Added

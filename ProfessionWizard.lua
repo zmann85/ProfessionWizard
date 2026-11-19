@@ -709,6 +709,8 @@ end
 function L.usable(r, from)
   if r.creates == 0 and r.prof ~= 333 then return false end
   if L.onCooldown(r) then return false end
+  -- camping recipes (Mana Well, Camp Tent, Anvil, Campfires...) give no skill (seen in game: Mana Well at 20)
+  if r.creates >= 279900 and r.creates <= 279999 then return false end
   if isKnown(r) then return true, 0 end
   if L.trainable(r) then return true, L.trainCost(r), "trainer" end
   if r.plans > 0 and ProfessionWizardDB.plans then
@@ -3698,11 +3700,11 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     ProfessionWizardDB.pos = nil -- the old account-wide place: each character now keeps its own
     -- recipe data corrected (recipes that need plans were marked as taught by trainers): every saved route
     -- shows as out of date, so FIND CHEAPEST ROUTE plans around them again
-    if (ProfessionWizardDB.dataVersion or 1) < 8 then
+    if (ProfessionWizardDB.dataVersion or 1) < 9 then
       for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
         for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
       end
-      ProfessionWizardDB.dataVersion = 8
+      ProfessionWizardDB.dataVersion = 9
     end
     pcall(L.importOthers)
     build()
