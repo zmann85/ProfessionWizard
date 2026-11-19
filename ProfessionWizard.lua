@@ -3326,32 +3326,59 @@ function L.learnWants()
   return want, rankFor
 end
 
--- learn at the trainer: one service per call (the list changes after each)
-function L.autoLearnRun(want, rankFor)
+-- learn at the trainer: everything the routes want that it shows as available. From the last line up, so the
+-- lines still to go keep their place when a learned one drops off the list. Returns how many it learned.
+-- (GetTrainerServiceInfo here gives name, icon, kind.)
+function L.autoLearnRun(want, rankFor, again)
+  local todo = {}
   for i = 1, GetNumTrainerServices() or 0 do
-    local name, sub, kind = GetTrainerServiceInfo(i)
-    -- a rank shows as "Alchemy" with "Expert" under it, or as "Expert Alchemist"
-    local isRank = name and rankFor[name]
-    if not isRank and name then
-      local full = (name .. " " .. (sub or "")):lower()
-      if full:find("journeyman") or full:find("expert") or full:find("artisan") then
-        for pn in pairs(rankFor) do if full:find(pn:lower():sub(1, 4), 1, true) then isRank = true end end
+    local name, _, kind = GetTrainerServiceInfo(i)
+    local isRank = false
+    if name and not want[name] then
+      local low = name:lower()
+      if low:find("journeyman") or low:find("expert") or low:find("artisan") then
+        for pn in pairs(rankFor) do if low:find(pn:lower():sub(1, 4), 1, true) then isRank = true end end
       end
+      if rankFor[name] then isRank = true end
     end
-    if kind == "available" and name and not learnTried[name] and (want[name] or isRank) then
-      local cost = GetTrainerServiceCost and GetTrainerServiceCost(i) or 0
-      if cost > GetMoney() then
-        learnTried[name] = true
-        Print("not enough money to learn " .. name .. " (" .. money(cost) .. ").")
-      else
-        learnTried[name] = true
-        BuyTrainerService(i)
-        Print("learned " .. (isRank and ("the next rank: " .. name .. (sub and sub ~= "" and (" (" .. sub .. ")") or "")) or name)
-          .. (cost > 0 and (" for " .. money(cost)) or "") .. ".")
-        return -- TRAINER_UPDATE comes back for the next one
-      end
+    if kind == "available" and name and (again or not learnTried[name]) and (want[name] or isRank) then
+      todo[#todo + 1] = { i = i, name = name, rank = isRank }
     end
   end
+  local cash, n = GetMoney(), 0
+  for k = #todo, 1, -1 do
+    local t = todo[k]
+    learnTried[t.name] = true
+    local cost = GetTrainerServiceCost and GetTrainerServiceCost(t.i) or 0
+    if cost > cash then
+      Print("not enough money to learn " .. t.name .. " (" .. money(cost) .. ").")
+    else
+      BuyTrainerService(t.i)
+      cash, n = cash - cost, n + 1
+      Print("learned " .. (t.rank and ("the next rank: " .. t.name) or t.name) .. (cost > 0 and (" for " .. money(cost)) or "") .. ".")
+    end
+  end
+  return n
+end
+
+-- a button on the trainer window too: a click always works, even where the game only lets a click buy
+function L.trainerButton()
+  local tf = _G.ClassTrainerFrame or _G.TrainerFrame
+  if not tf then return end
+  if not L.trainBtn then
+    local b = chip(tf, "LEARN FOR ROUTE", 150)
+    b:SetHeight(20)
+    b:SetPoint("BOTTOMLEFT", tf, "TOPLEFT", 60, 2)
+    b:SetFrameStrata("HIGH")
+    b:SetScript("OnClick", function()
+      if SetTrainerServiceTypeFilter then pcall(SetTrainerServiceTypeFilter, "available", 1) end
+      local want, rankFor = L.learnWants()
+      if L.autoLearnRun(want, rankFor, true) == 0 then Print("nothing here that your routes need right now.") end
+    end)
+    tip(b, "Learn for your routes", "Learns every recipe your routes use that this trainer can teach you now, and the next rank when a route needs it.")
+    L.trainBtn = b
+  end
+  L.trainBtn:Show()
 end
 
 ---------------------------------------------------------------------------
@@ -3837,7 +3864,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
   end
   if event == "MERCHANT_SHOW" then C_Timer.After(0.3, function() pcall(L.readMerchant) end); return end
   if event == "TRAINER_SHOW" or event == "TRAINER_UPDATE" then
-    if event == "TRAINER_SHOW" then learnTried = {} end
+    if event == "TRAINER_SHOW" then learnTried = {}; pcall(L.trainerButton) end
     -- the list can still be empty right when the window opens: look again a moment later
     for _, delay in ipairs({ 0.3, 1.2 }) do
       C_Timer.After(delay, function()
@@ -3924,9 +3951,9 @@ SlashCmdList.PROFESSIONWIZARD = function(msg)
     for name in pairs(want) do names[#names + 1] = name end
     Print("routes want: " .. (#names > 0 and table.concat(names, ", ") or "nothing"))
     for i = 1, math.min(n, 40) do
-      local name, sub, kind = GetTrainerServiceInfo(i)
+      local name, _, kind = GetTrainerServiceInfo(i)
       if kind ~= "header" and kind ~= "used" then
-        Print(string.format("%d. %s [%s] %s%s", i, tostring(name), tostring(kind), tostring(sub or ""),
+        Print(string.format("%d. %s [%s]%s", i, tostring(name), tostring(kind),
           want[name or ""] and " <- wanted" or ""))
       end
     end
