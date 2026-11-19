@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Where to train the next rank: the first route step past 75, 150 or 225 that your rank doesn't cover yet says
+  "train Expert at 150" (or Journeyman, Artisan), and its tooltip names the trainer for your faction and the
+  skill and level you need. Cooking and First Aid name the book or the quest instead.
+- Trainer recipes past 150 or 225 name a trainer of that rank in their tooltip, since city trainers of a lower
+  rank don't teach them.
+
 ## v1.4.0 (2026-11-19)
 
 ### Added

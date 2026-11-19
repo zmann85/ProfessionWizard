@@ -1568,12 +1568,25 @@ function L.makeStep(i)
       GameTooltip:AddDoubleLine("Materials each", money(st.matCost), 0.8, 0.8, 0.8, 1, 1, 1)
       if (st.back or 0) > 0 then GameTooltip:AddDoubleLine("Vendor pays each", money(st.back), 0.8, 0.8, 0.8, 1, 1, 1) end
     end
+    if st.rank then
+      GameTooltip:AddLine(string.format("Train %s to go past %d (needs skill %d and level %d): %s.", st.rank.name,
+        st.rank.cap, st.rank.skill, st.rank.level, st.rankWhere or "your trainer"), 1, 0.82, 0.45, true)
+    end
     if isKnown(r) then GameTooltip:AddLine("You know this.", 0.4, 0.86, 0.5)
     elseif r.trainer and (ns.NO_SOURCE or {})[r.spell] then
       GameTooltip:AddLine("Not known to be learnable in WoW Forever, so routes leave it out.", 1, 0.82, 0.45, true)
     elseif r.trainer and (ns.TRAINER_NOTES or {})[r.spell] then
       GameTooltip:AddLine("Not taught by the usual trainers: learn it from " .. ns.TRAINER_NOTES[r.spell] .. ".", 1, 0.82, 0.45, true)
-    elseif r.trainer then GameTooltip:AddLine("From your trainer.", 0.8, 0.8, 0.8)
+    elseif r.trainer then
+      -- recipes past 150 or 225 are only taught by trainers of that rank, so name one
+      local need = (r.learn > 225 and 225) or (r.learn > 150 and 150) or nil
+      local rk, where = nil, nil
+      if need and ns.rankInfo then rk, where = ns.rankInfo(r.prof, need, profName(r.prof)) end
+      if rk and where then
+        GameTooltip:AddLine("From a trainer who teaches " .. rk.name .. ", like " .. where .. ".", 0.8, 0.8, 0.8, true)
+      else
+        GameTooltip:AddLine("From your trainer.", 0.8, 0.8, 0.8)
+      end
     elseif r.plans > 0 then
       local _, link = GetItemInfo(r.plans)
       GameTooltip:AddLine("Needs " .. (link or "a recipe item") .. ", not taught by trainers.", 1, 0.82, 0.45, true)
@@ -2913,6 +2926,7 @@ refresh = function()
   local vendorBack, matTotal, plansTotal = 0, 0, 0
   local stepH = STEP_H + 4
   local openY -- first step that could be crafted once the window is open
+  local rankShown = {}
   for i, l in ipairs(stepLines) do
     local st = steps[i]
     if st then
@@ -2952,6 +2966,20 @@ refresh = function()
             plansTotal = plansTotal + (st.plans or 0)
           end
           if r.learn > cur then info = info .. "  ·  at " .. r.learn end
+        end
+        -- the first step that goes past a rank you don't have yet says so (the tooltip says where)
+        st.rank, st.rankWhere = nil, nil
+        if cap and ns.rankInfo then
+          for _, rk in ipairs(ns.RANKS) do
+            if rk.cap >= cap and rk.cap < target and st.to > rk.cap and not rankShown[rk.cap] then
+              rankShown[rk.cap] = true
+              st.rank = rk
+              local _, where = ns.rankInfo(pid, rk.cap, profName(pid))
+              st.rankWhere = where
+              info = info .. "  ·  " .. warm .. "train " .. rk.name .. " at " .. rk.cap .. "|r"
+              break
+            end
+          end
         end
         if Ench.slotOf(r) then
           local tg = Ench.target(r)
