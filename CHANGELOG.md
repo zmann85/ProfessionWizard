@@ -9,6 +9,9 @@
 - Trainer recipes past 150 or 225 name a trainer of that rank in their tooltip, since city trainers of a lower
   rank don't teach them.
 
+- SEARCH MISSING also searches the recipes your route needs from the auction house (the ones you don't know or
+  carry yet; vendor recipes stay out).
+
 ### Fixed
 - Routes no longer use recipes with a cooldown: every Transmute (Iron to Gold was planned for 225-271), Mooncloth
   and Cured Rugged Hide. They aren't used to make materials either. Saved routes show as out of date.

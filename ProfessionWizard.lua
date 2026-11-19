@@ -2055,6 +2055,10 @@ local function build()
         qty[n] = (qty[n] or 0) + miss -- an item with an indented line too: both parts
       end
     end
+    for _, id in ipairs(frame.planBuys or {}) do
+      local n = GetItemInfo(id)
+      if n and not qty[n] then names[#names + 1] = n; qty[n] = 1 end
+    end
     searchAH(names, qty)
   end)
 
@@ -3153,7 +3157,17 @@ refresh = function()
     if vendorBack > 0 then foot = foot .. string.format("  ·  selling what you craft to a vendor gets ~%s back", money(vendorBack)) end
   end
   frame.foot:SetText(foot)
-  placeFooter(y, missingKinds > 0, toSmelt)
+  -- recipes the route needs that you don't have yet and would buy on the AH go into SEARCH MISSING too
+  local planBuys = {}
+  for _, st in ipairs(steps) do
+    local r = st.r
+    if r and not isKnown(r) and not L.trainable(r) and (r.plans or 0) > 0 and L.haveOf(r.plans) == 0 then
+      local _, where = buyPrice(r.plans)
+      if where ~= "vendor" then planBuys[#planBuys + 1] = r.plans; GetItemInfo(r.plans) end -- asks the server for the name early
+    end
+  end
+  frame.planBuys = planBuys
+  placeFooter(y, missingKinds > 0 or #planBuys > 0, toSmelt)
 end
 
 ---------------------------------------------------------------------------
