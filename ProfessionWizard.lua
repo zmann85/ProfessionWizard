@@ -1835,9 +1835,19 @@ local function build()
     "On: routes may use recipes that only one NPC teaches, or that need a short questline first (like the Discolored potions).",
     "Off: only recipes from the usual profession trainers, recipes you know, and bought recipes.",
     "Click FIND CHEAPEST ROUTE after changing this.")
+  -- learning the route's recipes at the trainer by itself (on unless switched off)
+  opts.learn = chip(opts, "LEARN AT TRAINER", 192)
+  opts.learn:SetPoint("TOP", opts.special, "BOTTOM", 0, -4)
+  opts.learn:SetScript("OnClick", function(self)
+    ProfessionWizardDB.autoLearn = (ProfessionWizardDB.autoLearn == false)
+    self:SetActive(ProfessionWizardDB.autoLearn)
+  end)
+  tip(opts.learn, "Learn at the trainer",
+    "On: talking to a trainer learns the recipes your routes use that it can teach you now, and the next rank when a route needs it.",
+    "Each one is listed in chat with what it cost. Off: you pick them yourself.")
   -- Color scheme: one swatch per scheme, like Itinerary's setting; picking one reloads the UI
   opts.schemeLbl = text(opts, 10, 1, 1, 1, 0.5)
-  opts.schemeLbl:SetPoint("TOPLEFT", opts.special, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
+  opts.schemeLbl:SetPoint("TOPLEFT", opts.learn, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
   opts.swatches = {}
   for i, sc in ipairs(L.SCHEME_ORDER) do
     local key, label = sc[1], sc[2]
@@ -1864,7 +1874,7 @@ local function build()
     opts.swatches[i] = b
   end
   local hasItinerary = ItineraryDB and ItineraryDB.panel and true or false
-  local h = 88 + 26 + 22 + 10 + 12 + 4 + 18 + 8
+  local h = 88 + 26 + 22 + 22 + 10 + 12 + 4 + 18 + 8
   if hasItinerary then
     opts.follow = chip(opts, "SAME AS ITINERARY", 192)
     opts.follow:SetPoint("TOPLEFT", opts.schemeLbl, "BOTTOMLEFT", 0, -28)
@@ -1884,6 +1894,7 @@ local function build()
     if self.follow then self.follow:SetActive(cur == nil) end
     self.mailp:SetActive(ProfessionWizardDB.mailPanel ~= false)
     self.special:SetActive(ProfessionWizardDB.special ~= false)
+    self.learn:SetActive(ProfessionWizardDB.autoLearn ~= false)
   end)
   setBtn:SetScript("OnClick", function()
     opts:SetShown(not opts:IsShown())
@@ -3231,6 +3242,54 @@ refresh = function()
 end
 
 ---------------------------------------------------------------------------
+-- At a trainer: learn what your routes need right away (one at a time, the list changes after each)
+---------------------------------------------------------------------------
+local learnTried = {}
+function L.autoLearn()
+  if ProfessionWizardDB.autoLearn == false then return end
+  if not (GetNumTrainerServices and GetTrainerServiceInfo and BuyTrainerService) then return end
+  if SetTrainerServiceTypeFilter then pcall(SetTrainerServiceTypeFilter, "available", 1) end
+  -- what the routes of this character still need: recipe names, and the next rank's profession
+  local want, rankFor = {}, {}
+  local skills = readSkills()
+  for pid, route in pairs(routeStore()) do
+    local sk = skills[pid]
+    if type(route) == "table" and route.segs and sk then
+      local target = targetFor(pid, sk.rank)
+      for _, st in ipairs(plan(route, sk.rank, target)) do
+        local r = st.r
+        if r and not isKnown(r) and L.trainable(r) then want[r.name] = r end
+      end
+      if sk.max and sk.max < 300 and sk.max < target then rankFor[profName(pid)] = true end
+    end
+  end
+  for i = 1, GetNumTrainerServices() or 0 do
+    local name, sub, kind = GetTrainerServiceInfo(i)
+    -- a rank shows as "Alchemy" with "Expert" under it, or as "Expert Alchemist"
+    local isRank = name and rankFor[name]
+    if not isRank and name then
+      local full = (name .. " " .. (sub or "")):lower()
+      if full:find("journeyman") or full:find("expert") or full:find("artisan") then
+        for pn in pairs(rankFor) do if full:find(pn:lower():sub(1, 4), 1, true) then isRank = true end end
+      end
+    end
+    if kind == "available" and name and not learnTried[name] and (want[name] or isRank) then
+      local cost = GetTrainerServiceCost and GetTrainerServiceCost(i) or 0
+      if cost > GetMoney() then
+        learnTried[name] = true
+        Print("not enough money to learn " .. name .. " (" .. money(cost) .. ").")
+      else
+        learnTried[name] = true
+        BuyTrainerService(i)
+        Print("learned " .. (isRank and ("the next rank: " .. name .. (sub and sub ~= "" and (" (" .. sub .. ")") or "")) or name)
+          .. (cost > 0 and (" for " .. money(cost)) or "") .. ".")
+        return -- TRAINER_UPDATE comes back for the next one
+      end
+    end
+  end
+end
+
+---------------------------------------------------------------------------
 -- Mailbox panel on your alts: one click mails a crafter what it still needs
 ---------------------------------------------------------------------------
 local MP_W, MP_PAD, MP_ROW, MP_ROWS = 230, 10, 20, 12
@@ -3712,7 +3771,11 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     soon(); return
   end
   if event == "MERCHANT_SHOW" then C_Timer.After(0.3, function() pcall(L.readMerchant) end); return end
-  if event == "TRAINER_SHOW" or event == "TRAINER_UPDATE" then C_Timer.After(0.3, function() pcall(L.readTrainer) end); return end
+  if event == "TRAINER_SHOW" or event == "TRAINER_UPDATE" then
+    if event == "TRAINER_SHOW" then learnTried = {} end
+    C_Timer.After(0.3, function() pcall(L.readTrainer); pcall(L.autoLearn) end)
+    return
+  end
   if event == "GET_ITEM_INFO_RECEIVED" then soon(); return end
   if event == "BAG_UPDATE_DELAYED" then recipeCache = nil end
   if event == "MAIL_SHOW" then mailShown = true end

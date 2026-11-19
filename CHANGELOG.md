@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Talking to a trainer learns the recipes your routes use that it can teach you now, and the next rank when a
+  route goes past your cap. Each one is listed in chat with its cost; nothing is bought you can't afford.
+  Settings: LEARN AT TRAINER (on by default).
+
 ## v1.6.0 (2026-11-19)
 
 ### Added
