@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.7.2 (2026-11-22)
 
 ### Fixed
 - The "no prices yet, scan the AH" warning showed right after a full Auctionator scan. It counted the recipes you
