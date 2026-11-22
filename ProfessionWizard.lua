@@ -1672,6 +1672,19 @@ function L.makeStep(i)
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine(string.format("|cffff8040%d|r  |cffffff00%d|r  |cff40c040%d|r  |cff808080%d|r", r.learn, r.y,
       math.floor((r.y + r.g) / 2), r.g), 1, 1, 1)
+    -- what this step uses, for all its crafts, and how many of each you have
+    local crafts = st.crafts or 0
+    if crafts > 0 and #r.mats > 0 then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddDoubleLine(string.format("For %d crafts", crafts), "need / have", 1, 0.82, 0.45, 0.6, 0.6, 0.6)
+      for _, m in ipairs(r.mats) do
+        local name, _, _, _, _, _, _, _, _, icon = GetItemInfo(m[1])
+        local need, have = m[2] * crafts, L.haveOf(m[1])
+        local hc = have >= need and "|cff66dd80" or "|cffff7366"
+        GameTooltip:AddDoubleLine((icon and ("|T" .. icon .. ":14|t ") or "") .. (name or ("item " .. m[1])),
+          need .. " / " .. hc .. have .. "|r", 0.9, 0.9, 0.9, 1, 1, 1)
+      end
+    end
     if st.matCost then
       GameTooltip:AddDoubleLine("Materials each", money(st.matCost), 0.8, 0.8, 0.8, 1, 1, 1)
       if (st.back or 0) > 0 then GameTooltip:AddDoubleLine("Vendor pays each", money(st.back), 0.8, 0.8, 0.8, 1, 1, 1) end

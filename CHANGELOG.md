@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Hovering a craft step lists the materials it uses for all its crafts, with how many you have of each (green when
+  you have enough).
+
 ## v1.7.2 (2026-11-22)
 
 ### Fixed
