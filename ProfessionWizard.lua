@@ -2369,7 +2369,7 @@ local function scanLabel()
 end
 
 -- materials (and plans, and what bars/bolts are made from) for recipes in from..to
-local function scanList(pid, from, to)
+local function scanList(pid, from, to, noRecipes)
   local ctx = newCtx(pid, from)
   local seen, list = {}, {}
   local function add(id, depth)
@@ -2389,7 +2389,7 @@ local function scanList(pid, from, to)
       local known = isKnown(r)
       if known or L.trainable(r) or (r.plans > 0 and ProfessionWizardDB.plans) then
         for _, m in ipairs(r.mats) do add(m[1], 0) end
-        if not known and not r.trainer then add(r.plans, 2) end
+        if not known and not r.trainer and not noRecipes then add(r.plans, 2) end
       end
     end
   end
@@ -2416,7 +2416,24 @@ local function priceState(pid, cur, target)
   local hasAuctionator = (Auctionator and Auctionator.API and Auctionator.API.v1) and true or false
   local own = ProfessionWizardDB.scan and ProfessionWizardDB.scan[GetRealmName() or "?"] or {}
   local total, priced, fresh, newest = 0, 0, 0, nil
-  local ok, list = pcall(scanList, pid, cur, target)
+  -- with a route: just what its steps use (auction house materials only). Without one: what a route could use,
+  -- but not the recipes themselves, which are rarely listed and would make it look like nothing has a price.
+  local ok, list
+  local route = routeStore()[pid]
+  if type(route) == "table" and route.segs then
+    ok, list = pcall(function()
+      local ids, seen = {}, {}
+      for _, st in ipairs(plan(route, cur, target)) do
+        for _, m in ipairs(st.r and st.r.mats or {}) do
+          if not seen[m[1]] and not ns.VENDOR_ITEMS[m[1]] then seen[m[1]] = true; ids[#ids + 1] = m[1] end
+        end
+      end
+      return ids
+    end)
+  end
+  if not ok or not list or #list == 0 then
+    ok, list = pcall(scanList, pid, cur, target, true)
+  end
   for _, id in ipairs(ok and list or {}) do
     total = total + 1
     local o = own[id]

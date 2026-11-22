@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- The "no prices yet, scan the AH" warning showed right after a full Auctionator scan. It counted the recipes you
+  could buy and every material any recipe could use, many of which nobody lists. With a route it now checks just
+  the auction house materials the route uses; without one it leaves the recipes out.
+
 ## v1.7.1 (2026-11-19)
 
 ### Fixed
