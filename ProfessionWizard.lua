@@ -814,7 +814,7 @@ function L.findRoute(pid, from, to)
   local owned = ProfessionWizardDB.useOwned and {} or nil
   -- LOW UPFRONT: what you get back by selling counts only a quarter, so the route is picked by what you have to
   -- pay for materials now; returns only decide between recipes that cost about the same
-  local backW = ProfessionWizardDB.lowUpfront and 0.25 or 1
+  local backW = ProfessionWizardDB.lowUpfront and (ProfessionWizardDB.upfrontW or 0.25) or 1
   for _, r in ipairs(recipes(pid).list) do
     if r.g > from and r.learn < to then
       local ok, plansCost, where = L.usable(r, from)
@@ -2003,19 +2003,35 @@ local function build()
     "On: what you craft counts at its auction house price (less the 5% cut) where that beats the vendor, so recipes whose results sell well get cheaper in the route.",
     "Off: only what a vendor pays. That's certain; an AH sale isn't, and selling many at once lowers the price.")
   -- pick the route by money spent on materials now rather than by cost after selling (off unless switched on)
+  -- click steps through off, 0%, 25%, 50%, 75% (how much a sale counts); right-click steps back
   opts.upfront = chip(opts, "LOW UPFRONT", 192)
   opts.upfront:SetPoint("TOP", opts.ahret, "BOTTOM", 0, -4)
-  opts.upfront:SetScript("OnClick", function(self)
-    ProfessionWizardDB.lowUpfront = not ProfessionWizardDB.lowUpfront
-    self:SetActive(ProfessionWizardDB.lowUpfront)
+  opts.upfront:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  function opts.upfront:Show2()
+    local on = ProfessionWizardDB.lowUpfront
+    self.text:SetText(on and string.format("LOW UPFRONT: SALES %d%%", math.floor((ProfessionWizardDB.upfrontW or 0.25) * 100 + 0.5))
+      or "LOW UPFRONT: OFF")
+    self:SetActive(on and true or false)
+  end
+  opts.upfront:SetScript("OnClick", function(self, button)
+    local steps = { false, 0, 0.25, 0.5, 0.75 }
+    local i = 1
+    if ProfessionWizardDB.lowUpfront then
+      for k = 2, #steps do if math.abs(steps[k] - (ProfessionWizardDB.upfrontW or 0.25)) < 0.01 then i = k end end
+    end
+    i = (button == "RightButton") and ((i - 2) % #steps + 1) or (i % #steps + 1)
+    ProfessionWizardDB.lowUpfront = steps[i] ~= false
+    if steps[i] ~= false then ProfessionWizardDB.upfrontW = steps[i] end
+    self:Show2()
     for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
       for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
     end
     refresh()
   end)
   tip(opts.upfront, "Low upfront",
-    "On: the route is picked by what the materials cost you now. What the crafts sell for (vendor, or the AH with AH RETURNS) counts only a quarter, so it settles close calls but doesn't make you buy dear materials for a later sale.",
-    "Off: the cheapest route after selling what you craft.")
+    "On: the route is picked mostly by what the materials cost you now. The percentage is how much of what the crafts sell for (vendor, or the AH with AH RETURNS) still counts: 0% ignores sales, 75% almost the full value.",
+    "Off: the cheapest route after selling what you craft (sales count fully).",
+    "Click for the next step, right-click for the one before.")
   -- Color scheme: one swatch per scheme, like Itinerary's setting; picking one reloads the UI
   opts.schemeLbl = text(opts, 10, 1, 1, 1, 0.5)
   opts.schemeLbl:SetPoint("TOPLEFT", opts.upfront, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
@@ -2068,7 +2084,7 @@ local function build()
     self.learn:SetActive(ProfessionWizardDB.autoLearn ~= false)
     self.owned:SetActive(ProfessionWizardDB.useOwned and true or false)
     self.ahret:SetActive(ProfessionWizardDB.ahReturns and true or false)
-    self.upfront:SetActive(ProfessionWizardDB.lowUpfront and true or false)
+    self.upfront:Show2()
   end)
   setBtn:SetScript("OnClick", function()
     opts:SetShown(not opts:IsShown())

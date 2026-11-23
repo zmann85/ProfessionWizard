@@ -7,9 +7,9 @@
   materials and shopping list from skill 1 (SEARCH MISSING and the lists for your alts work too). It shows with a
   "?" until you learn it; right-click its button to remove it.
 
-- Settings: LOW UPFRONT (off by default). The route is picked by what its materials cost you now; what the
-  crafts sell for (vendor, or the AH with AH RETURNS on) counts only a quarter, so it settles close calls without
-  sending you after dear materials for a later sale.
+- Settings: LOW UPFRONT (off by default). The route is picked mostly by what its materials cost you now; what the
+  crafts sell for (vendor, or the AH with AH RETURNS on) counts only partly. Click to step through 0%, 25%, 50%
+  and 75% of the sale counting (right-click steps back).
 
 ### Fixed
 - Characters are told apart by their full name. WoW Forever characters can share a first name (Ghaani Block and
