@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.9.0 (2026-11-23)
 
 ### Added
 - Plan a profession you haven't learned: click + next to the profession buttons and pick one. You get its route,
