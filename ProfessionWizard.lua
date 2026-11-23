@@ -344,6 +344,19 @@ function L.sellPrice(id)
   return info[11] or 0
 end
 
+-- what one crafted item brings back: the vendor's price, or with AH RETURNS on, the auction house price less
+-- its 5% cut when that's more (not for items that bind on pickup, which can't be listed)
+function L.returnPrice(id)
+  local sp = L.sellPrice(id)
+  if sp == nil then return nil end
+  if ProfessionWizardDB.ahReturns then
+    local bind = select(14, GetItemInfo(id))
+    local a = bind ~= 1 and ahPrice(id)
+    if a and a * 0.95 > sp then return math.floor(a * 0.95), "ah" end
+  end
+  return sp, "vendor"
+end
+
 function L.vendorBuy(id)
   local seen = ProfessionWizardDB.vendor and ProfessionWizardDB.vendor[id]
   if seen then return seen end
@@ -756,7 +769,7 @@ function L.findRoute(pid, from, to)
         if c then
           local back = 0
           if r.creates > 0 then
-            local sp = L.sellPrice(r.creates)
+            local sp = L.returnPrice(r.creates)
             if sp then back = sp * r.made else waiting = waiting + 1 end
           end
           cands[#cands + 1] = { r = r, mats = c, back = back, net = c - back, plans = plansCost or 0, where = where }
@@ -1687,7 +1700,11 @@ function L.makeStep(i)
     end
     if st.matCost then
       GameTooltip:AddDoubleLine("Materials each", money(st.matCost), 0.8, 0.8, 0.8, 1, 1, 1)
-      if (st.back or 0) > 0 then GameTooltip:AddDoubleLine("Vendor pays each", money(st.back), 0.8, 0.8, 0.8, 1, 1, 1) end
+      if (st.back or 0) > 0 then
+        local _, how = L.returnPrice(r.creates)
+        GameTooltip:AddDoubleLine(how == "ah" and "Sells on the AH for (less 5%)" or "Vendor pays each", money(st.back / math.max(1, r.made)),
+          0.8, 0.8, 0.8, 1, 1, 1)
+      end
     end
     if isKnown(r) then GameTooltip:AddLine("You know this.", 0.4, 0.86, 0.5)
     elseif r.trainer and (ns.NO_SOURCE or {})[r.spell] then
@@ -1921,9 +1938,23 @@ local function build()
     "On: materials you already own count as free until they run out, so the route uses them before buying anything.",
     "What counts as owned follows COUNT BANK, COUNT ALTS and COUNT MAIL.",
     "Click FIND CHEAPEST ROUTE after changing this.")
+  -- count what crafted items sell for on the auction house (off unless switched on)
+  opts.ahret = chip(opts, "AH RETURNS", 192)
+  opts.ahret:SetPoint("TOP", opts.owned, "BOTTOM", 0, -4)
+  opts.ahret:SetScript("OnClick", function(self)
+    ProfessionWizardDB.ahReturns = not ProfessionWizardDB.ahReturns
+    self:SetActive(ProfessionWizardDB.ahReturns)
+    for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
+      for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
+    end
+    refresh()
+  end)
+  tip(opts.ahret, "AH returns",
+    "On: what you craft counts at its auction house price (less the 5% cut) where that beats the vendor, so recipes whose results sell well get cheaper in the route.",
+    "Off: only what a vendor pays. That's certain; an AH sale isn't, and selling many at once lowers the price.")
   -- Color scheme: one swatch per scheme, like Itinerary's setting; picking one reloads the UI
   opts.schemeLbl = text(opts, 10, 1, 1, 1, 0.5)
-  opts.schemeLbl:SetPoint("TOPLEFT", opts.owned, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
+  opts.schemeLbl:SetPoint("TOPLEFT", opts.ahret, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
   opts.swatches = {}
   for i, sc in ipairs(L.SCHEME_ORDER) do
     local key, label = sc[1], sc[2]
@@ -1950,7 +1981,7 @@ local function build()
     opts.swatches[i] = b
   end
   local hasItinerary = ItineraryDB and ItineraryDB.panel and true or false
-  local h = 88 + 26 + 22 + 22 + 22 + 10 + 12 + 4 + 18 + 8
+  local h = 88 + 26 + 22 + 22 + 22 + 22 + 10 + 12 + 4 + 18 + 8
   if hasItinerary then
     opts.follow = chip(opts, "SAME AS ITINERARY", 192)
     opts.follow:SetPoint("TOPLEFT", opts.schemeLbl, "BOTTOMLEFT", 0, -28)
@@ -1972,6 +2003,7 @@ local function build()
     self.special:SetActive(ProfessionWizardDB.special ~= false)
     self.learn:SetActive(ProfessionWizardDB.autoLearn ~= false)
     self.owned:SetActive(ProfessionWizardDB.useOwned and true or false)
+    self.ahret:SetActive(ProfessionWizardDB.ahReturns and true or false)
   end)
   setBtn:SetScript("OnClick", function()
     opts:SetShown(not opts:IsShown())
@@ -2403,6 +2435,8 @@ local function scanList(pid, from, to, noRecipes)
       if known or L.trainable(r) or (r.plans > 0 and ProfessionWizardDB.plans) then
         for _, m in ipairs(r.mats) do add(m[1], 0) end
         if not known and not r.trainer and not noRecipes then add(r.plans, 2) end
+        -- with AH RETURNS on, what the recipe makes needs a price too
+        if ProfessionWizardDB.ahReturns and not noRecipes and r.creates > 0 then add(r.creates, 2) end
       end
     end
   end
@@ -3115,7 +3149,7 @@ refresh = function()
     if r then
       local mc = 0
       for _, m in ipairs(r.mats) do mc = mc + (L.unitCost(m[1], ctx, 0) or 0) * m[2] end
-      local back = r.creates > 0 and (L.sellPrice(r.creates) or 0) * r.made or 0
+      local back = r.creates > 0 and (L.returnPrice(r.creates) or 0) * r.made or 0
       st.matCost, st.back = mc, back
       matTotal = matTotal + mc * st.crafts
       vendorBack = vendorBack + back * st.crafts
@@ -3319,7 +3353,10 @@ refresh = function()
   end
   if matTotal > 0 then
     foot = foot .. "\n" .. string.format("Whole route: ~%s in materials, recipes and training", money(matTotal + plansTotal))
-    if vendorBack > 0 then foot = foot .. string.format("  ·  selling what you craft to a vendor gets ~%s back", money(vendorBack)) end
+    if vendorBack > 0 then
+      foot = foot .. string.format(ProfessionWizardDB.ahReturns and "  ·  selling what you craft gets ~%s back (AH where it pays more)"
+        or "  ·  selling what you craft to a vendor gets ~%s back", money(vendorBack))
+    end
   end
   frame.foot:SetText(foot)
   -- recipes the route needs that you don't have yet and would buy on the AH go into SEARCH MISSING too

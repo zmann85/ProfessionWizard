@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Settings: AH RETURNS (off by default). What you craft counts at its auction house price, less the 5% cut, where
+  that beats the vendor, so recipes whose results sell well get cheaper in the route. Items that bind on pickup
+  still count at the vendor price. SCAN AH then looks up the crafted items too.
+
 ## v1.7.3 (2026-11-23)
 
 ### Added
