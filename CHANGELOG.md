@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.8.0 (2026-11-23)
 
 ### Added
 - Settings: AH RETURNS (off by default). What you craft counts at its auction house price, less the 5% cut, where
