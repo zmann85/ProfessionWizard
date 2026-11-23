@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Plan a profession you haven't learned: click + next to the profession buttons and pick one. You get its route,
+  materials and shopping list from skill 1 (SEARCH MISSING and the lists for your alts work too). It shows with a
+  "?" until you learn it; right-click its button to remove it.
+
+### Fixed
+- Characters are told apart by their full name. WoW Forever characters can share a first name (Ghaani Block and
+  Ghaani Shield), and Profession Wizard mixed up their known recipes, routes, bags and crafter lists. Saved
+  characters and crafter lists under a first name alone are dropped once; they come back as each one logs in (or
+  right away from GoldSense). Your routes, targets and window place carry over.
+- Mail to your alts counts on the right one: by full name, or by first name only when just one has it.
+
 ## v1.8.0 (2026-11-23)
 
 ### Added

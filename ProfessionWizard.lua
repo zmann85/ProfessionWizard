@@ -228,12 +228,63 @@ local function readSkills()
   return out
 end
 
+-- professions you haven't learned but want to plan (added with + on the panel), per character
+function L.previewSet()
+  if not ProfessionWizardDB then return {} end
+  ProfessionWizardDB.preview = ProfessionWizardDB.preview or {}
+  local k = (L.fullName() or "?") .. "-" .. (GetRealmName() or "?")
+  ProfessionWizardDB.preview[k] = ProfessionWizardDB.preview[k] or {}
+  return ProfessionWizardDB.preview[k]
+end
+
+-- readSkills plus those planned ones, as if just learned (skill 1, Apprentice). One you've learned since drops out.
+local function shownSkills()
+  local out = readSkills()
+  local pv = L.previewSet()
+  for pid in pairs(pv) do
+    if out[pid] then pv[pid] = nil else out[pid] = { rank = 1, max = 75, preview = true } end
+  end
+  return out
+end
+
 local function readSkill(pid)
-  local s = readSkills()[pid]
+  local s = shownSkills()[pid]
   if s then return s.rank, s.max end
 end
 
-local function myKey() return (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?") end
+-- the character's full name: WoW Forever gives the surname as UnitName's second value ("Ghaani Shield")
+function L.fullName()
+  local ok, name, surname = pcall(UnitNameUnmodified or UnitName, "player")
+  if not ok or not name then return UnitName("player") end
+  if type(surname) ~= "string" or surname == "" then return name end
+  local sep = Constants and Constants.CharacterNameSeparatorConsts
+    and Constants.CharacterNameSeparatorConsts.CHARACTERNAME_SURNAME_SEPARATOR or " "
+  return name .. sep .. surname
+end
+
+-- a character's key: its full name (WoW Forever characters share first names, "Ghaani Block" and "Ghaani Shield")
+local function myKey() return (L.fullName() or "?") .. "-" .. (GetRealmName() or "?") end
+
+-- Keys used to be the first name alone. This character takes over what was saved under it (routes, targets,
+-- known recipes, window place) unless it already has its own. Characters sharing that first name each get a copy;
+-- known recipes are checked against the character's spells, so a wrong copy does no harm.
+function L.migrateKey()
+  local first = UnitName("player")
+  local realm = GetRealmName() or "?"
+  local old, new = (first or "?") .. "-" .. realm, myKey()
+  if old == new then return end
+  for _, t in ipairs({ ProfessionWizardDB.routes, ProfessionWizardDB.known, ProfessionWizardDB.posChar, ProfessionWizardDB.last }) do
+    if type(t) == "table" and t[old] ~= nil and t[new] == nil then t[new] = t[old] end
+  end
+  local tg = ProfessionWizardDB.targets
+  if type(tg) == "table" then
+    for k, v in pairs(tg) do
+      local pid = k:match("^" .. old:gsub("%p", "%%%0") .. ":(%d+)$")
+      if pid and tg[new .. ":" .. pid] == nil then tg[new .. ":" .. pid] = v end
+    end
+  end
+end
+
 
 ---------------------------------------------------------------------------
 -- Recipe data (Recipes.lua), turned into tables the first time a profession is used.
@@ -494,7 +545,7 @@ local function snapshot()
   local bags = L.scanBags(L.bagList())
   if numSlots(0) == 0 and old.bags then bags = old.bags end
   local me = {
-    name = UnitName("player"), realm = GetRealmName(), faction = UnitFactionGroup("player"),
+    name = L.fullName(), realm = GetRealmName(), faction = UnitFactionGroup("player"),
     skills = skills, time = time(), bags = bags, bank = old.bank or {}, bankTime = old.bankTime,
     mail = old.mail or {}, incoming = old.incoming or {}, mailTime = old.mailTime,
   }
@@ -601,14 +652,12 @@ local function bestSkill(pid)
 end
 
 -- mail you send to your own characters counts on them straight away
+-- a name to compare: without realm, lower case, the surname kept ("ghaani shield")
 function L.shortName(s)
   s = (s or ""):gsub("%-.*$", "")
   local sep = Constants and Constants.CharacterNameSeparatorConsts and Constants.CharacterNameSeparatorConsts.CHARACTERNAME_SURNAME_SEPARATOR
-  if sep and sep ~= "" then
-    local i = s:find(sep, 1, true)
-    if i then s = s:sub(1, i - 1) end
-  end
-  return (s:match("^(%S+)") or s):lower()
+  if sep and sep ~= "" and sep ~= " " then s = s:gsub(sep:gsub("%p", "%%%0"), " ") end
+  return (s:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")):lower()
 end
 
 local outgoing
@@ -627,9 +676,16 @@ function L.deliverOutgoing()
   local who = L.shortName(outgoing.to)
   local realm, faction = GetRealmName(), UnitFactionGroup("player")
   local target, targetKey
+  -- the full name; a first name alone only when one character has it
+  local byFirst, nFirst = nil, 0
   for k, c in pairs(ProfessionWizardDB.chars) do
-    if c.realm == realm and c.faction == faction and L.shortName(c.name) == who then target, targetKey = c, k end
+    if c.realm == realm and c.faction == faction then
+      local n = L.shortName(c.name)
+      if n == who then target, targetKey = c, k end
+      if n:match("^(%S+)") == who then byFirst, nFirst = k, nFirst + 1 end
+    end
   end
+  if not target and nFirst == 1 then target, targetKey = ProfessionWizardDB.chars[byFirst], byFirst end
   if target and targetKey ~= myKey() then
     target.incoming = target.incoming or {}
     for id, n in pairs(outgoing.items) do target.incoming[id] = (target.incoming[id] or 0) + n end
@@ -1003,15 +1059,6 @@ end
 -- Goals: what each crafter still needs, counting only what it has itself.
 -- Your alts read these at their mailbox and send exactly that.
 ---------------------------------------------------------------------------
-function L.fullName()
-  local ok, name, surname = pcall(UnitNameUnmodified or UnitName, "player")
-  if not ok or not name then return UnitName("player") end
-  if type(surname) ~= "string" or surname == "" then return name end
-  local sep = Constants and Constants.CharacterNameSeparatorConsts
-    and Constants.CharacterNameSeparatorConsts.CHARACTERNAME_SURNAME_SEPARATOR or " "
-  return name .. sep .. surname
-end
-
 function L.goalFor(pid)
   local rank = readSkill(pid)
   if not rank or rank >= 300 then return nil end
@@ -1047,7 +1094,7 @@ function L.goalFor(pid)
     end
   end
   return {
-    owner = myKey(), pid = pid, name = UnitName("player"), full = L.fullName(), realm = GetRealmName(),
+    owner = myKey(), pid = pid, name = L.fullName(), full = L.fullName(), realm = GetRealmName(),
     faction = UnitFactionGroup("player"), skill = rank, target = target, needs = needs, alt = alt, prod = prod,
     rows = rowsOut, steps = stepsOut, time = time(), sent = {},
   }
@@ -1062,7 +1109,7 @@ saveGoals = function()
   for k, g in pairs(ProfessionWizardDB.goals) do
     if g.owner == me then ProfessionWizardDB.goals[k] = nil end
   end
-  for pid in pairs(skills) do
+  for pid in pairs(shownSkills()) do
     if not PROF[pid].gather then
       local g = L.goalFor(pid)
       if g then ProfessionWizardDB.goals[me .. ":" .. pid] = g end
@@ -1473,7 +1520,7 @@ local openBtn -- secure button that opens the profession window (CRAFT needs it 
 local smeltBtn -- secure button that casts Smelting (opening the smelting window needs a real click)
 
 local function shownProf()
-  local have = readSkills()
+  local have = shownSkills()
   if current and have[current] then return current end
   if ProfessionWizardDB.last and ProfessionWizardDB.last[myKey()] and have[ProfessionWizardDB.last[myKey()]] then
     current = ProfessionWizardDB.last[myKey()]
@@ -2024,10 +2071,46 @@ local function build()
     if not pr.gather then
       local c = chip(frame, pr.short, 80)
       c.pid = pr.id
-      c:SetScript("OnClick", function() pick(pr.id) end)
+      c:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+      c:SetScript("OnClick", function(self, button)
+        local pv = L.previewSet()
+        if frame.addMode then
+          pv[pr.id] = true; frame.addMode = nil; pick(pr.id); return
+        end
+        if button == "RightButton" and pv[pr.id] then
+          pv[pr.id] = nil
+          if current == pr.id then current = nil end
+          if refresh then refresh() end
+          return
+        end
+        pick(pr.id)
+      end)
+      c:HookScript("OnEnter", function(self)
+        if frame.addMode then
+          GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+          GameTooltip:AddLine("Plan " .. profName(pr.id), 1, 1, 1)
+          GameTooltip:AddLine("See its route and shopping list as if you had just learned it.", 0.8, 0.8, 0.8, true)
+          GameTooltip:Show()
+        elseif L.previewSet()[pr.id] then
+          GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+          GameTooltip:AddLine(profName(pr.id) .. ": not learned yet", 1, 1, 1)
+          GameTooltip:AddLine("Planning only, from skill 1. Right-click to remove it.", 0.8, 0.8, 0.8, true)
+          GameTooltip:Show()
+        end
+      end)
+      c:HookScript("OnLeave", function() GameTooltip:Hide() end)
       profChips[#profChips + 1] = c
     end
   end
+
+  -- + : plan a profession you haven't learned
+  frame.addProf = chip(frame, "+", 24)
+  frame.addProf:SetScript("OnClick", function()
+    frame.addMode = not frame.addMode or nil
+    if refresh then refresh() end
+  end)
+  tip(frame.addProf, "Plan another profession",
+    "Pick one you haven't learned to see its route and shopping list from skill 1. Right-click its button later to remove it.")
 
   -- target controls
   local lbl = text(frame, 11, 1, 1, 1, 0.5)
@@ -2736,6 +2819,7 @@ end
 -- another character's saved list: what it still needs, what you can send, what to buy
 local function renderSheet(g, warm, green, red, dim)
   for _, c in ipairs(profChips) do c:Hide() end
+  frame.addProf:Hide()
   for _, c in ipairs(frame.ctrl) do c:Hide() end
   for _, c in ipairs(frame.milestones) do c:Hide() end
   frame.cast:Hide(); frame.empty:Hide(); frame.more:Hide()
@@ -3017,7 +3101,7 @@ refresh = function()
   local warm = hex(s.warm[1], s.warm[2], s.warm[3])
   local green, red, dim = "|cff66dd80", "|cffff7366", "|cff808080"
 
-  local skills = readSkills()
+  local skills = shownSkills()
   local pid = shownProf()
   frame.lists:SetActive(viewing and true or false)
   -- a character without a crafting profession shows the newest saved list instead
@@ -3033,16 +3117,27 @@ refresh = function()
   for _, c in ipairs(frame.ctrl) do c:Show() end
   frame.colNeed:SetText("NEED"); frame.colHave:SetText("HAVE"); frame.colStat:SetText("STILL NEED")
 
-  -- profession chips
-  local x = PAD
+  -- profession chips: the ones you have (and plan), or with + pressed the ones you could plan
+  local shown = {}
+  local _, class = UnitClass("player")
   for _, c in ipairs(profChips) do
-    if skills[c.pid] then
-      c:ClearAllPoints(); c:SetPoint("TOPLEFT", x, -76); x = x + 84
-      c:SetActive(c.pid == pid); c:Show()
-    else
-      c:Hide()
-    end
+    local want
+    if frame.addMode then want = not skills[c.pid] and (c.pid ~= 40 or class == "ROGUE")
+    else want = skills[c.pid] and true or false end
+    if want then shown[#shown + 1] = c else c:Hide() end
   end
+  local step = math.min(84, math.floor((W - PAD * 2 - 30) / math.max(1, #shown)))
+  local x = PAD
+  for _, c in ipairs(shown) do
+    c:SetWidth(step - 4)
+    c:ClearAllPoints(); c:SetPoint("TOPLEFT", x, -76); x = x + step
+    local pv = skills[c.pid] and skills[c.pid].preview
+    c.text:SetText(PROF[c.pid].short .. (pv and "?" or ""))
+    c:SetActive(not frame.addMode and c.pid == pid); c:Show()
+  end
+  frame.addProf:ClearAllPoints(); frame.addProf:SetPoint("TOPLEFT", x, -76)
+  frame.addProf.text:SetText(frame.addMode and "x" or "+")
+  frame.addProf:SetActive(frame.addMode and true or false); frame.addProf:Show()
 
   local function hideAll()
     for _, l in ipairs(stepLines) do l:Hide() end
@@ -3059,7 +3154,7 @@ refresh = function()
     hideAll()
     frame.title:SetText("No crafting profession found")
     frame.sub:SetText("")
-    frame.empty:SetText("No crafting profession here, and no saved lists from your other characters yet. Log in on a crafter once and its list is saved for your alts.")
+    frame.empty:SetText("No crafting profession here, and no saved lists from your other characters yet. Click + to plan one you haven't learned, or log in on a crafter once and its list is saved for your alts.")
     frame.empty:ClearAllPoints(); frame.empty:SetPoint("TOPLEFT", PAD, -80); frame.empty:Show()
     frame:SetHeight(130)
     return
@@ -3101,11 +3196,15 @@ refresh = function()
   local mining = bestSkill(MINING)
   if mining > 0 then sub = "Mining " .. mining .. "  ·  " .. sub end
   if route then sub = "route from " .. ago(route.time) .. (route.dirty and (warm .. " (out of date)|r") or "") .. "  ·  " .. sub end
-  if cap and cap < target and cap < 300 then
+  if skills[pid] and skills[pid].preview then
+    -- planning only: the cap and "open your window" notes don't apply yet
+    sub = warm .. "not learned yet: any " .. profName(pid) .. " trainer teaches Apprentice|r  ·  " .. sub
+    cap = 75
+  elseif cap and cap < target and cap < 300 then
     local rank = (cap <= 75 and "Journeyman (level 10)") or (cap <= 150 and "Expert (level 20)") or (cap <= 225 and "Artisan (level 35)") or "the next rank"
     sub = sub .. "  ·  " .. warm .. "your cap is " .. cap .. ": train " .. rank .. "|r"
   end
-  if not L.seenProf(pid) then sub = sub .. "  ·  " .. warm .. "open your " .. profName(pid) .. " window once|r" end
+  if not L.seenProf(pid) and not (skills[pid] and skills[pid].preview) then sub = sub .. "  ·  " .. warm .. "open your " .. profName(pid) .. " window once|r" end
   frame.sub:SetText(sub)
 
   -- steps
@@ -3870,6 +3969,17 @@ ev:SetScript("OnEvent", function(self, event, arg1)
       end
       ProfessionWizardDB.dataVersion = 10
     end
+    -- version 2 keys are full names: drop the saved characters and crafter lists under first names alone
+    -- (they come back right away from GoldSense, or when each character logs in)
+    if (ProfessionWizardDB.keyVersion or 1) < 2 then
+      local function firstOnly(k) return type(k) == "string" and not k:gsub("%-.*$", ""):find("[ %p]") end
+      for k in pairs(ProfessionWizardDB.chars) do if firstOnly(k) then ProfessionWizardDB.chars[k] = nil end end
+      for gk, g in pairs(ProfessionWizardDB.goals or {}) do
+        if type(g) ~= "table" or firstOnly(g.owner) then ProfessionWizardDB.goals[gk] = nil end
+      end
+      ProfessionWizardDB.keyVersion = 2
+    end
+    pcall(L.migrateKey)
     pcall(L.importOthers)
     build()
     pcall(L.setupMinimap)
@@ -3964,7 +4074,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
   if event == "MAIL_FAILED" then outgoing = nil end
   if event == "MAIL_SHOW" or (mp and mp:IsShown()) then C_Timer.After(0.25, mpRefresh) end
   if event == "MAIL_SEND_INFO_UPDATE" then return end -- attachments changed: only the mailbox panel cares
-  if event == "PLAYER_LOGIN" then pcall(L.importOthers); C_Timer.After(5, snapshot); return end
+  if event == "PLAYER_LOGIN" then pcall(L.migrateKey); pcall(L.importOthers); C_Timer.After(5, snapshot); return end
   -- no snapshot at logout: the game reads bags and skills as empty by then, and the last change is saved already
   if event == "PLAYER_LOGOUT" then mailOpen, bankOpen = false, false; return end
   if event ~= "CHAT_MSG_SKILL" then
