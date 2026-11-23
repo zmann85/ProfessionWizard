@@ -812,6 +812,9 @@ function L.findRoute(pid, from, to)
   local cands, waiting, unpriced = {}, 0, {}
   -- USE WHAT I HAVE: materials you own (bags, bank, mail, alts as counted) cost nothing until they run out
   local owned = ProfessionWizardDB.useOwned and {} or nil
+  -- LOW UPFRONT: what you get back by selling counts only a quarter, so the route is picked by what you have to
+  -- pay for materials now; returns only decide between recipes that cost about the same
+  local backW = ProfessionWizardDB.lowUpfront and 0.25 or 1
   for _, r in ipairs(recipes(pid).list) do
     if r.g > from and r.learn < to then
       local ok, plansCost, where = L.usable(r, from)
@@ -847,7 +850,7 @@ function L.findRoute(pid, from, to)
     for _, cd in ipairs(cands) do
       local p = L.chance(cd.r, s)
       if p >= MIN_CHANCE then
-        local score = (cd.net + PER_CRAFT) / p
+        local score = (cd.mats - cd.back * backW + PER_CRAFT) / p
         if owned and cd.each then
           local crafts, c = 1 / p, 0
           for _, e in ipairs(cd.each) do
@@ -855,7 +858,7 @@ function L.findRoute(pid, from, to)
             if owned[id] == nil then owned[id] = L.haveOf(id) end
             c = c + e[3] * math.max(0, e[2] * crafts - owned[id])
           end
-          score = (c - cd.back * crafts) + PER_CRAFT * crafts
+          score = (c - cd.back * backW * crafts) + PER_CRAFT * crafts
         end
         if cd.plans > 0 and not bought[cd.r.spell] then
           local span = 0
@@ -1999,9 +2002,23 @@ local function build()
   tip(opts.ahret, "AH returns",
     "On: what you craft counts at its auction house price (less the 5% cut) where that beats the vendor, so recipes whose results sell well get cheaper in the route.",
     "Off: only what a vendor pays. That's certain; an AH sale isn't, and selling many at once lowers the price.")
+  -- pick the route by money spent on materials now rather than by cost after selling (off unless switched on)
+  opts.upfront = chip(opts, "LOW UPFRONT", 192)
+  opts.upfront:SetPoint("TOP", opts.ahret, "BOTTOM", 0, -4)
+  opts.upfront:SetScript("OnClick", function(self)
+    ProfessionWizardDB.lowUpfront = not ProfessionWizardDB.lowUpfront
+    self:SetActive(ProfessionWizardDB.lowUpfront)
+    for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
+      for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
+    end
+    refresh()
+  end)
+  tip(opts.upfront, "Low upfront",
+    "On: the route is picked by what the materials cost you now. What the crafts sell for (vendor, or the AH with AH RETURNS) counts only a quarter, so it settles close calls but doesn't make you buy dear materials for a later sale.",
+    "Off: the cheapest route after selling what you craft.")
   -- Color scheme: one swatch per scheme, like Itinerary's setting; picking one reloads the UI
   opts.schemeLbl = text(opts, 10, 1, 1, 1, 0.5)
-  opts.schemeLbl:SetPoint("TOPLEFT", opts.ahret, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
+  opts.schemeLbl:SetPoint("TOPLEFT", opts.upfront, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
   opts.swatches = {}
   for i, sc in ipairs(L.SCHEME_ORDER) do
     local key, label = sc[1], sc[2]
@@ -2028,7 +2045,7 @@ local function build()
     opts.swatches[i] = b
   end
   local hasItinerary = ItineraryDB and ItineraryDB.panel and true or false
-  local h = 88 + 26 + 22 + 22 + 22 + 22 + 10 + 12 + 4 + 18 + 8
+  local h = 88 + 26 + 22 + 22 + 22 + 22 + 22 + 10 + 12 + 4 + 18 + 8
   if hasItinerary then
     opts.follow = chip(opts, "SAME AS ITINERARY", 192)
     opts.follow:SetPoint("TOPLEFT", opts.schemeLbl, "BOTTOMLEFT", 0, -28)
@@ -2051,6 +2068,7 @@ local function build()
     self.learn:SetActive(ProfessionWizardDB.autoLearn ~= false)
     self.owned:SetActive(ProfessionWizardDB.useOwned and true or false)
     self.ahret:SetActive(ProfessionWizardDB.ahReturns and true or false)
+    self.upfront:SetActive(ProfessionWizardDB.lowUpfront and true or false)
   end)
   setBtn:SetScript("OnClick", function()
     opts:SetShown(not opts:IsShown())
