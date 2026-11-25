@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+- With AH RETURNS on, the footer shows both what selling your crafts brings (AH where it pays more) and what it
+  brings if it all goes to a vendor.
+
 ### Fixed
 - Materials you'll be able to make by the time the route needs them now count as makeable. A route from skill 1
   bought every Bolt of Mageweave, Silk and Woolen Cloth, because at 1 you can't make them yet; now it compares

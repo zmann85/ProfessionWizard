@@ -3297,7 +3297,7 @@ refresh = function()
   end
   frame.stepsHead:ClearAllPoints(); frame.stepsHead:SetPoint("TOPLEFT", PAD, -y)
   y = y + 16
-  local vendorBack, matTotal, plansTotal = 0, 0, 0
+  local vendorBack, matTotal, plansTotal, vendorOnly = 0, 0, 0, 0
   local stepCtx = { [cur] = ctx }
   -- what each step costs, and the whole route's totals (all steps, not only the ones in view)
   for _, st in ipairs(stepRows) do
@@ -3310,6 +3310,8 @@ refresh = function()
       st.matCost, st.back = mc, back
       matTotal = matTotal + mc * st.crafts
       vendorBack = vendorBack + back * st.crafts
+      -- what a vendor alone pays, to compare with when AH RETURNS is on
+      vendorOnly = vendorOnly + (r.creates > 0 and (L.sellPrice(r.creates) or 0) * r.made or 0) * st.crafts
       if not isKnown(r) then plansTotal = plansTotal + (st.plans or 0) end
     elseif st.rankRow then
       plansTotal = plansTotal + (st.rankCost or 0)
@@ -3511,8 +3513,12 @@ refresh = function()
   if matTotal > 0 then
     foot = foot .. "\n" .. string.format("Whole route: ~%s in materials, recipes and training", money(matTotal + plansTotal))
     if vendorBack > 0 then
-      foot = foot .. string.format(ProfessionWizardDB.ahReturns and "  ·  selling what you craft gets ~%s back (AH where it pays more)"
-        or "  ·  selling what you craft to a vendor gets ~%s back", money(vendorBack))
+      if ProfessionWizardDB.ahReturns then
+        foot = foot .. string.format("\nSelling what you craft: ~%s (AH where it pays more), ~%s all to a vendor",
+          money(vendorBack), money(vendorOnly))
+      else
+        foot = foot .. string.format("  ·  selling what you craft to a vendor gets ~%s back", money(vendorBack))
+      end
     end
   end
   frame.foot:SetText(foot)
