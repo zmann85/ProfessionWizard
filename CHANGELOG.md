@@ -7,6 +7,11 @@
   day old, otherwise Auctionator), OWN SCAN only, or AUCTIONATOR only.
 
 ### Changed
+- SCAN AH is much faster: it searches 50 items at a time, the way Auctionator's shopping lists do, instead of one
+  by one.
+- SCAN AH now stores each item's cheapest price, like Auctionator. It used to store the price of the cheapest 15%
+  of what was listed, so its routes came out dearer than with Auctionator's prices. Scan again to replace the old
+  prices.
 - With AH RETURNS on, the footer shows both what selling your crafts brings (AH where it pays more) and what it
   brings if it all goes to a vendor.
 

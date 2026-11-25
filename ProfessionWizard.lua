@@ -2781,6 +2781,39 @@ function L.readModern(kind, arg)
   L.storeUnits(units, qty)
 end
 
+-- browse results for a batch: the cheapest price of each item; ask for more until the list is complete
+function L.readBrowse()
+  if not (scan and scan.batch) then return end
+  local A = C_AuctionHouse
+  local st = L.scanStore()
+  for _, r in ipairs(A.GetBrowseResults() or {}) do
+    local id = r.itemKey and r.itemKey.itemID
+    if id and r.minPrice and r.minPrice > 0 then
+      local old = scan.seen[id] and st[id]
+      if not old or r.minPrice < (old.p or math.huge) then
+        st[id] = { p = r.minPrice, n = math.max(old and old.n or 0, r.totalQuantity or 0), t = time() }
+      end
+      scan.seen[id] = true
+    end
+  end
+  if A.HasFullBrowseResults and not A.HasFullBrowseResults() and A.RequestMoreBrowseResults then
+    scan.sentAt = GetTime()
+    pcall(A.RequestMoreBrowseResults)
+    return
+  end
+  L.endBatch()
+end
+
+function L.endBatch()
+  local st = L.scanStore()
+  for _, id in ipairs(scan.batch or {}) do
+    if scan.seen[id] then scan.found = scan.found + 1
+    else st[id] = { t = time() }; scan.none = scan.none + 1 end -- none listed right now
+  end
+  scan.batch, scan.seen, scan.waiting = nil, nil, false
+  scanLabel()
+end
+
 function L.storeUnits(units, qty)
   table.sort(units, function(a, b) return a.p < b.p end)
   local st = L.scanStore()
@@ -2788,13 +2821,8 @@ function L.storeUnits(units, qty)
     st[scan.id] = { t = time() } -- none listed right now
     scan.none = scan.none + 1
   else
-    -- the price you'd pay for the cheapest 15% of what's listed: one odd cheap stack can't skew it
-    local want_, acc, price = math.max(1, math.ceil(qty * 0.15)), 0, units[1].p
-    for _, u in ipairs(units) do
-      acc = acc + u.n; price = u.p
-      if acc >= want_ then break end
-    end
-    st[scan.id] = { p = math.floor(price + 0.5), t = time() }
+    -- the cheapest listing, like Auctionator, so both price sources agree
+    st[scan.id] = { p = math.floor(units[1].p + 0.5), n = qty, t = time() }
     scan.found = scan.found + 1
   end
   scan.waiting = false
@@ -2804,6 +2832,11 @@ end
 scanFrame:SetScript("OnUpdate", function(self)
   if not scan then self:Hide(); return end
   if not ahOpen then finishScan(true); return end
+  if scan.waiting and scan.batch then
+    -- a batch that doesn't finish: keep what came back and go on
+    if GetTime() - scan.sentAt > 10 then L.endBatch() end
+    return
+  end
   if scan.waiting then
     if GetTime() - scan.sentAt > 8 then
       -- no answer: try this item once more at the end, then move on
@@ -2813,6 +2846,26 @@ scanFrame:SetScript("OnUpdate", function(self)
         if scan.tries[scan.id] < 2 then scan.list[#scan.list + 1] = scan.id; scan.total = #scan.list end
       end
     end
+    return
+  end
+  if L.modernAH() and C_AuctionHouse.SearchForItemKeys and C_AuctionHouse.GetBrowseResults then
+    -- many items per search (like Auctionator's shopping lists): the browse results give each one's cheapest
+    -- price and how many are listed
+    local A = C_AuctionHouse
+    if A.IsThrottledMessageSystemReady and not A.IsThrottledMessageSystemReady() then return end
+    local ids, keys = {}, {}
+    while #ids < 50 and scan.i < #scan.list do
+      scan.i = scan.i + 1
+      local id = scan.list[scan.i]
+      local okKey, key = pcall(A.MakeItemKey, id)
+      if okKey and key then ids[#ids + 1] = id; keys[#keys + 1] = key end
+    end
+    if #ids == 0 then finishScan(); return end
+    scan.batch, scan.seen = ids, {}
+    scan.waiting, scan.sentAt = true, GetTime()
+    local sorts = { { sortOrder = Enum and Enum.AuctionHouseSortOrder and Enum.AuctionHouseSortOrder.Price or 0, reverseSort = false } }
+    if not pcall(A.SearchForItemKeys, keys, sorts) then scan.waiting = false; scan.batch = nil end
+    scanLabel()
     return
   end
   if L.modernAH() then
@@ -2893,6 +2946,11 @@ end
 local function onAuction(event, arg1)
   if event == "AUCTION_HOUSE_SHOW" then ahOpen = true
   elseif event == "AUCTION_HOUSE_CLOSED" then ahOpen = false
+  elseif event == "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED" or event == "AUCTION_HOUSE_BROWSE_RESULTS_ADDED" then
+    if scan and scan.batch then
+      -- the results come in a moment after the event
+      C_Timer.After(0.1, function() pcall(L.readBrowse) end)
+    end
   elseif event == "COMMODITY_SEARCH_RESULTS_UPDATED" then pcall(L.readModern, "commodity", arg1)
   elseif event == "ITEM_SEARCH_RESULTS_UPDATED" then pcall(L.readModern, "item", arg1)
   elseif event == "AUCTION_ITEM_LIST_UPDATE" and scan and scan.waiting and not scan.reading then
@@ -4083,6 +4141,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
       "CRAFT_SHOW", "CRAFT_CLOSE", "CRAFT_UPDATE", "PLAYER_REGEN_ENABLED",
       "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "AUCTION_ITEM_LIST_UPDATE", "MAIL_SEND_INFO_UPDATE",
       "COMMODITY_SEARCH_RESULTS_UPDATED", "ITEM_SEARCH_RESULTS_UPDATED",
+      "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", "AUCTION_HOUSE_BROWSE_RESULTS_ADDED",
       "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_FAILED",
       "REPLACE_ENCHANT", "NEW_RECIPE_LEARNED", "LEARNED_SPELL_IN_TAB" }) do
       pcall(self.RegisterEvent, self, e)
