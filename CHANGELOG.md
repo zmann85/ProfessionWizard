@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.10.0 (2026-11-25)
 
 ### Added
 - Settings: PRICES picks where auction house prices come from. AUTO (as before: your SCAN AH while it's under a
