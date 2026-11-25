@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Materials you'll be able to make by the time the route needs them now count as makeable. A route from skill 1
+  bought every Bolt of Mageweave, Silk and Woolen Cloth, because at 1 you can't make them yet; now it compares
+  making them at the skill where they're used. SCAN AH also looks up their raw materials.
+
 ## v1.9.0 (2026-11-23)
 
 ### Added

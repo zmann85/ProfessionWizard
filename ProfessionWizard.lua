@@ -761,18 +761,25 @@ function L.canMake(r, ctx)
   return L.trainable(r) and r.learn <= ctx.skill
 end
 
-function L.unitCost(id, ctx, depth)
+-- lvl: the skill you'll have when you need it (ctx.at[id] from the route's steps), so a Bolt of Mageweave needed
+-- at 180 can be made then even if you're at 1 now
+function L.unitCost(id, ctx, depth, lvl)
   local m = ctx.memo[id]
   if m ~= nil then return m or nil end
   ctx.memo[id] = false -- stops loops
   local best = buyPrice(id)
   local via
+  lvl = math.max(lvl or 0, ctx.at and ctx.at[id] or 0, ctx.skill or 0)
   if depth < 3 then
     for _, r in ipairs(L.producers(id, ctx.pid)) do
-      if L.canMake(r, ctx) then
+      local saved = ctx.skill
+      ctx.skill = lvl
+      local can = L.canMake(r, ctx)
+      ctx.skill = saved
+      if can then
         local c = 0
         for _, mt in ipairs(r.mats) do
-          local u = L.unitCost(mt[1], ctx, depth + 1)
+          local u = L.unitCost(mt[1], ctx, depth + 1, lvl)
           if not u then c = nil; break end
           c = c + u * mt[2]
         end
@@ -790,6 +797,13 @@ end
 
 local function newCtx(pid, skill)
   return { pid = pid, skill = skill, mining = bestSkill(MINING), memo = {}, via = {} }
+end
+
+-- one ctx per skill level, for costs that depend on what you can make by then
+function L.ctxAt(pid, level, cache)
+  local c = cache[level]
+  if not c then c = newCtx(pid, level); cache[level] = c end
+  return c
 end
 
 -- may this recipe be used for skill-ups, and what do its plans cost?
@@ -815,13 +829,16 @@ function L.findRoute(pid, from, to)
   -- LOW UPFRONT: what you get back by selling counts only a quarter, so the route is picked by what you have to
   -- pay for materials now; returns only decide between recipes that cost about the same
   local backW = ProfessionWizardDB.lowUpfront and (ProfessionWizardDB.upfrontW or 0.25) or 1
+  local ctxs = { [from] = ctx }
   for _, r in ipairs(recipes(pid).list) do
     if r.g > from and r.learn < to then
       local ok, plansCost, where = L.usable(r, from)
       if ok then
+        -- its materials as costed when you get to use it: by then you may make some of them yourself
+        local cx = L.ctxAt(pid, math.max(from, r.learn), ctxs)
         local c = 0
         for _, mt in ipairs(r.mats) do
-          local u = L.unitCost(mt[1], ctx, 0)
+          local u = L.unitCost(mt[1], cx, 0)
           if not u then c = nil; unpriced[mt[1]] = (unpriced[mt[1]] or 0) + 1; break end
           c = c + u * mt[2]
         end
@@ -835,7 +852,7 @@ function L.findRoute(pid, from, to)
           if owned then
             -- per material: what one costs, so owned ones can be taken off below
             local each = {}
-            for _, mt in ipairs(r.mats) do each[#each + 1] = { mt[1], mt[2], L.unitCost(mt[1], ctx, 0) or 0 } end
+            for _, mt in ipairs(r.mats) do each[#each + 1] = { mt[1], mt[2], L.unitCost(mt[1], cx, 0) or 0 } end
             cands[#cands].each = each
           end
         end
@@ -993,7 +1010,12 @@ local function materials(steps, ctx)
   local function note(id) if not seen[id] then seen[id] = true; order[#order + 1] = id end end
   for _, st in ipairs(steps) do
     if st.r then
-      for _, m in ipairs(st.r.mats) do base[m[1]] = (base[m[1]] or 0) + m[2] * st.crafts; note(m[1]) end
+      for _, m in ipairs(st.r.mats) do
+        base[m[1]] = (base[m[1]] or 0) + m[2] * st.crafts; note(m[1])
+        -- the earliest skill it's needed at: makes can use recipes learned by then
+        ctx.at = ctx.at or {}
+        ctx.at[m[1]] = math.min(ctx.at[m[1]] or 999, st.from)
+      end
       if st.r.creates > 0 then produced[st.r.creates] = (produced[st.r.creates] or 0) + st.crafts * st.r.made end
     end
   end
@@ -2532,7 +2554,7 @@ end
 
 -- materials (and plans, and what bars/bolts are made from) for recipes in from..to
 local function scanList(pid, from, to, noRecipes)
-  local ctx = newCtx(pid, from)
+  local ctx = newCtx(pid, to) -- what you could make anywhere on the way, so its raw materials get prices too
   local seen, list = {}, {}
   local function add(id, depth)
     if not id or id == 0 or seen[id] then return end
@@ -3276,12 +3298,14 @@ refresh = function()
   frame.stepsHead:ClearAllPoints(); frame.stepsHead:SetPoint("TOPLEFT", PAD, -y)
   y = y + 16
   local vendorBack, matTotal, plansTotal = 0, 0, 0
+  local stepCtx = { [cur] = ctx }
   -- what each step costs, and the whole route's totals (all steps, not only the ones in view)
   for _, st in ipairs(stepRows) do
     local r = st.r
     if r then
       local mc = 0
-      for _, m in ipairs(r.mats) do mc = mc + (L.unitCost(m[1], ctx, 0) or 0) * m[2] end
+      local cx = L.ctxAt(pid, math.max(cur, st.from), stepCtx)
+      for _, m in ipairs(r.mats) do mc = mc + (L.unitCost(m[1], cx, 0) or 0) * m[2] end
       local back = r.creates > 0 and (L.returnPrice(r.creates) or 0) * r.made or 0
       st.matCost, st.back = mc, back
       matTotal = matTotal + mc * st.crafts
@@ -3397,7 +3421,7 @@ refresh = function()
   y = y + 18
 
   local list, mbase, mfrom = {}, nil, nil
-  if #steps > 0 then list, mbase, mfrom = materials(steps, ctx) end
+  if #steps > 0 then list, mbase, mfrom = materials(steps, newCtx(pid, cur)) end -- a fresh one: it sets ctx.at
   L.sortRows(list)
   list = L.nestRows(list, mbase, mfrom)
   frame.list = list
