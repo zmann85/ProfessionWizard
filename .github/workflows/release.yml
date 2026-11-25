@@ -30,7 +30,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      CF_API_KEY: ${{ ((github.event_name == 'workflow_dispatch' && inputs.github_only) || startsWith(github.ref, 'refs/heads/reupload/')) && '' || secrets.CF_API_KEY }}
+      # (an empty string is false in these expressions, so the key is the value picked, not the empty one)
+      CF_API_KEY: ${{ !((github.event_name == 'workflow_dispatch' && inputs.github_only) || startsWith(github.ref, 'refs/heads/reupload/')) && secrets.CF_API_KEY || '' }}
       REUPLOAD: ${{ startsWith(github.ref, 'refs/heads/reupload/') && github.ref_name || '' }}
       WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
       GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
