@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+- Settings: PRICES picks where auction house prices come from. AUTO (as before: your SCAN AH while it's under a
+  day old, otherwise Auctionator), OWN SCAN only, or AUCTIONATOR only.
+
 ### Changed
 - With AH RETURNS on, the footer shows both what selling your crafts brings (AH where it pays more) and what it
   brings if it all goes to a vendor.

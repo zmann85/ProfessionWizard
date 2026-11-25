@@ -377,11 +377,15 @@ function L.scanStore()
   return ProfessionWizardDB.scan[r]
 end
 
--- your own scan wins while it's less than a day old; otherwise Auctionator's price
+-- PRICES setting (ProfessionWizardDB.priceSource): "auto" (default) uses your own scan while it's less than a day
+-- old, otherwise Auctionator's price; "own" only your SCAN AH; "auctionator" only Auctionator
 local function ahPrice(id)
+  local src = ProfessionWizardDB.priceSource or "auto"
   local own = ProfessionWizardDB.scan and ProfessionWizardDB.scan[GetRealmName() or "?"]
   own = own and own[id]
+  if src == "own" then return own and own.p end
   local a = L.auctionatorPrice(id)
+  if src == "auctionator" then return a end
   if own and own.p and (not a or time() - own.t < 86400) then return own.p end
   return a or (own and own.p)
 end
@@ -2054,9 +2058,31 @@ local function build()
     "On: the route is picked mostly by what the materials cost you now. The percentage is how much of what the crafts sell for (vendor, or the AH with AH RETURNS) still counts: 0% ignores sales, 75% almost the full value.",
     "Off: the cheapest route after selling what you craft (sales count fully).",
     "Click for the next step, right-click for the one before.")
+  -- where auction house prices come from: AUTO, OWN SCAN or AUCTIONATOR (click steps through them)
+  opts.prices = chip(opts, "PRICES: AUTO", 192)
+  opts.prices:SetPoint("TOP", opts.upfront, "BOTTOM", 0, -4)
+  function opts.prices:Show2()
+    local src = ProfessionWizardDB.priceSource or "auto"
+    self.text:SetText("PRICES: " .. (src == "own" and "OWN SCAN" or src == "auctionator" and "AUCTIONATOR" or "AUTO"))
+    self:SetActive(src ~= "auto")
+  end
+  opts.prices:SetScript("OnClick", function(self)
+    local nxt = { auto = "own", own = "auctionator", auctionator = "auto" }
+    ProfessionWizardDB.priceSource = nxt[ProfessionWizardDB.priceSource or "auto"]
+    self:Show2()
+    if L.clearPriceCache then L.clearPriceCache() end
+    for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
+      for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
+    end
+    refresh()
+  end)
+  tip(opts.prices, "Auction house prices",
+    "AUTO: your own SCAN AH while it's less than a day old, otherwise Auctionator.",
+    "OWN SCAN: only what SCAN AH found. AUCTIONATOR: only Auctionator's prices.",
+    "Click to step through them.")
   -- Color scheme: one swatch per scheme, like Itinerary's setting; picking one reloads the UI
   opts.schemeLbl = text(opts, 10, 1, 1, 1, 0.5)
-  opts.schemeLbl:SetPoint("TOPLEFT", opts.upfront, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
+  opts.schemeLbl:SetPoint("TOPLEFT", opts.prices, "BOTTOMLEFT", 0, -10); opts.schemeLbl:SetText("COLOR SCHEME")
   opts.swatches = {}
   for i, sc in ipairs(L.SCHEME_ORDER) do
     local key, label = sc[1], sc[2]
@@ -2083,7 +2109,7 @@ local function build()
     opts.swatches[i] = b
   end
   local hasItinerary = ItineraryDB and ItineraryDB.panel and true or false
-  local h = 88 + 26 + 22 + 22 + 22 + 22 + 22 + 10 + 12 + 4 + 18 + 8
+  local h = 88 + 26 + 22 + 22 + 22 + 22 + 22 + 22 + 10 + 12 + 4 + 18 + 8
   if hasItinerary then
     opts.follow = chip(opts, "SAME AS ITINERARY", 192)
     opts.follow:SetPoint("TOPLEFT", opts.schemeLbl, "BOTTOMLEFT", 0, -28)
@@ -2107,6 +2133,7 @@ local function build()
     self.owned:SetActive(ProfessionWizardDB.useOwned and true or false)
     self.ahret:SetActive(ProfessionWizardDB.ahReturns and true or false)
     self.upfront:Show2()
+    self.prices:Show2()
   end)
   setBtn:SetScript("OnClick", function()
     opts:SetShown(not opts:IsShown())
@@ -2588,6 +2615,7 @@ end
 --   "ok"    fresh enough
 -- plus whether Auctionator is installed and how old the newest price is (days). Cached for a few seconds.
 local priceCache = {}
+function L.clearPriceCache() priceCache = {} end
 function L.auctionatorAge(id)
   local a = Auctionator and Auctionator.API and Auctionator.API.v1
   if not (a and a.GetAuctionAgeByItemID) then return nil end
@@ -2623,8 +2651,9 @@ local function priceState(pid, cur, target)
   for _, id in ipairs(ok and list or {}) do
     total = total + 1
     local o = own[id]
-    local ageO = o and o.p and o.t and (time() - o.t) / 86400
-    local ageA = L.auctionatorPrice(id) and (L.auctionatorAge(id) or 0)
+    local src = ProfessionWizardDB.priceSource or "auto"
+    local ageO = src ~= "auctionator" and o and o.p and o.t and (time() - o.t) / 86400 or nil
+    local ageA = src ~= "own" and L.auctionatorPrice(id) and (L.auctionatorAge(id) or 0) or nil
     local age = (ageO and ageA and math.min(ageO, ageA)) or ageO or ageA
     if age then
       priced = priced + 1
