@@ -11,6 +11,8 @@ on:
     branches: [main]
     paths: [CHANGELOG.md]
     tags: ["v*"]
+  # pushing a branch named reupload/vX.Y.Z packages that tag again for GitHub only
+  create:
   workflow_dispatch:
     inputs:
       tag:
@@ -28,7 +30,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      CF_API_KEY: ${{ (github.event_name == 'workflow_dispatch' && inputs.github_only) && '' || secrets.CF_API_KEY }}
+      CF_API_KEY: ${{ ((github.event_name == 'workflow_dispatch' && inputs.github_only) || startsWith(github.ref, 'refs/heads/reupload/')) && '' || secrets.CF_API_KEY }}
+      REUPLOAD: ${{ startsWith(github.ref, 'refs/heads/reupload/') && github.ref_name || '' }}
       WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
       GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -42,6 +45,14 @@ jobs:
         run: |
           if [ -n "${{ inputs.tag }}" ]; then
             echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ -n "$REUPLOAD" ]; then
+            t="${REUPLOAD#reupload/}"
+            git checkout -q "refs/tags/$t"
+            echo "tag=$t" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "${GITHUB_EVENT_NAME}" = "create" ]; then
+            echo "Not a reupload branch, nothing to do"; exit 0
           fi
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"; exit 0
