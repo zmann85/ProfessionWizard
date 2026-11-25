@@ -4021,11 +4021,11 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     ProfessionWizardDB.pos = nil -- the old account-wide place: each character now keeps its own
     -- recipe data corrected (recipes that need plans were marked as taught by trainers): every saved route
     -- shows as out of date, so FIND CHEAPEST ROUTE plans around them again
-    if (ProfessionWizardDB.dataVersion or 1) < 10 then
+    if (ProfessionWizardDB.dataVersion or 1) < 11 then
       for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
         for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
       end
-      ProfessionWizardDB.dataVersion = 10
+      ProfessionWizardDB.dataVersion = 11
     end
     -- version 2 keys are full names: drop the saved characters and crafter lists under first names alone
     -- (they come back right away from GoldSense, or when each character logs in)
