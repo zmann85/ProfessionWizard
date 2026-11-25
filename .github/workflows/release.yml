@@ -2,7 +2,8 @@
 # first "## vX.Y" heading names a version that has no tag yet, this workflow
 # tags that commit, builds the zip, makes a GitHub release and uploads it to
 # CurseForge. Versions containing "beta"/"alpha" upload as Beta/Alpha files.
-# Pushing a tag like v1.8.0 by hand also works.
+# Pushing a tag like v1.8.0 by hand also works. Running it by hand (workflow_dispatch) with a tag rebuilds
+# that version and uploads it again, by default only to GitHub (for a release whose zip didn't upload).
 name: Package and release
 
 on:
@@ -10,6 +11,15 @@ on:
     branches: [main]
     paths: [CHANGELOG.md]
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to package again, e.g. v1.10.0"
+        required: true
+      github_only:
+        description: "Only upload to GitHub (skip CurseForge)"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -18,17 +28,21 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      CF_API_KEY: ${{ (github.event_name == 'workflow_dispatch' && inputs.github_only) && '' || secrets.CF_API_KEY }}
       WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
       GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Tag new version from CHANGELOG.md
         id: ver
         run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"; exit 0
           fi
