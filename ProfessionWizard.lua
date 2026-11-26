@@ -436,13 +436,27 @@ end
 
 -- read every vendor you open, so its prices are known from then on
 function L.readMerchant()
-  if not (GetMerchantNumItems and GetMerchantItemInfo and GetMerchantItemLink) then return end
+  -- WoW Forever's client has C_MerchantFrame.GetItemInfo (a table) instead of Classic's GetMerchantItemInfo;
+  -- the price it gives already has your reputation discount in it
+  local CM = C_MerchantFrame
+  local getInfo = (CM and CM.GetItemInfo) or GetMerchantItemInfo
+  if not (getInfo and GetMerchantNumItems) then return end
   ProfessionWizardDB.vendor = ProfessionWizardDB.vendor or {}
   local n = GetMerchantNumItems() or 0
   for i = 1, n do
-    local _, _, cost, qty, _, _, _, extended = GetMerchantItemInfo(i)
-    local link = GetMerchantItemLink(i)
-    local id = link and tonumber(link:match("item:(%d+)"))
+    local cost, qty, extended
+    if CM and CM.GetItemInfo then
+      local info = CM.GetItemInfo(i)
+      if info then cost, qty, extended = info.price, info.stackCount, info.hasExtendedCost end
+    else
+      local _, _, c, q, _, _, _, e = GetMerchantItemInfo(i)
+      cost, qty, extended = c, q, e
+    end
+    local id = GetMerchantItemID and GetMerchantItemID(i)
+    if not id and GetMerchantItemLink then
+      local link = GetMerchantItemLink(i)
+      id = link and tonumber(link:match("item:(%d+)"))
+    end
     if id and cost and cost > 0 and not extended then
       local each = cost / math.max(1, qty or 1)
       local old = ProfessionWizardDB.vendor[id]

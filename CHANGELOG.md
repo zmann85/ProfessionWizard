@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Fixed
+- Vendor prices you see are saved again (with your reputation discount): WoW Forever's merchant window answers
+  through C_MerchantFrame, so nothing was read. Until you've seen a vendor sell an item, its price is still
+  estimated at four times what a vendor pays for it, without any discount.
 - Specialization recipes are left out of routes unless the character has that specialization: Dragonscale
   Gauntlets and Breastplate (Dragonscale), Gauntlets of the Sea and Helm of Fire (Elemental), Wolfshead Helm and
   Feathered Breastplate (Tribal), and the Gnomish and Goblin Engineering trainer recipes. Dragonscale Gauntlets
