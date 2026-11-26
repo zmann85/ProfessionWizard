@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+- TAKE FOR NEXT 50 on the inbox: takes out of your mail only the materials the next 50 skill points of your route
+  use (the profession shown in the panel), less what's in your bags, and stops when your bags are full.
+  Right-click for the next 25, 50 or 100 points or up to your target. Mails with cash on delivery are skipped.
+
 ### Fixed
 - A material that's needed both as it is and for something you make (Silk Cloth for Bolts of Silk Cloth) showed a
   bare number under HAVE. It now says where it is, e.g. "0 + 100 alts".

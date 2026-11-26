@@ -4137,6 +4137,111 @@ function L.mpPlace()
 end
 
 -- only on the Send Mail tab: open with it, close with it
+---------------------------------------------------------------------------
+-- Inbox: TAKE FOR ROUTE takes only what the next part of your route needs out of the mail
+---------------------------------------------------------------------------
+local TAKE_STEPS = { 25, 50, 100, 0 } -- skill points ahead; 0 = up to your target
+local take -- { want = { [id] = n }, wait = time }
+
+-- what the next skill points of the shown profession's route use, less what's in your bags already
+function L.takeWants()
+  local pid = shownProf()
+  local cur = pid and readSkill(pid)
+  if not cur then return nil end
+  local target = targetFor(pid, cur)
+  local stepN = ProfessionWizardDB.takeSteps or 50
+  local upto = stepN > 0 and math.min(target, cur + stepN) or target
+  local route = routeStore()[pid]
+  if not (route and route.segs) or upto <= cur then return nil end
+  local list = materials(plan(route, cur, upto), newCtx(pid, cur))
+  local want = {}
+  for _, row in ipairs(list) do want[row.id] = (want[row.id] or 0) + (row.need or 0) end
+  for id, n in pairs(want) do
+    local inBags = GetItemCount and GetItemCount(id, false) or 0
+    want[id] = n - inBags
+    if want[id] <= 0 then want[id] = nil end
+  end
+  return want, pid, upto
+end
+
+local function freeSlots()
+  local n = 0
+  for _, bag in ipairs(L.bagList()) do
+    local free = C_Container and C_Container.GetContainerNumFreeSlots and C_Container.GetContainerNumFreeSlots(bag)
+      or (GetContainerNumFreeSlots and GetContainerNumFreeSlots(bag)) or 0
+    n = n + (free or 0)
+  end
+  return n
+end
+
+-- one attachment at a time (the server takes them one by one); mails with cash on delivery are left alone
+local takeFrame = CreateFrame("Frame")
+takeFrame:Hide()
+takeFrame:SetScript("OnUpdate", function(self)
+  if not take then self:Hide(); return end
+  if GetTime() < take.wait then return end
+  if not (_G.InboxFrame and _G.InboxFrame:IsShown()) then take = nil; self:Hide(); return end
+  if freeSlots() == 0 then
+    Print("your bags are full: took " .. take.n .. " stacks.")
+    take = nil; self:Hide(); return
+  end
+  for i = 1, (GetInboxNumItems() or 0) do
+    local _, _, _, _, _, cod = GetInboxHeaderInfo(i)
+    if not cod or cod == 0 then
+      for a = 1, (ATTACHMENTS_MAX_RECEIVE or 16) do
+        local _, itemID, _, cnt = GetInboxItem(i, a)
+        if itemID and (take.want[itemID] or 0) > 0 then
+          take.want[itemID] = take.want[itemID] - (cnt or 1)
+          take.n = take.n + 1
+          TakeInboxItem(i, a)
+          take.wait = GetTime() + 0.6
+          return
+        end
+      end
+    end
+  end
+  Print(take.n > 0 and ("took " .. take.n .. " stacks for your route up to " .. take.upto .. ".")
+    or ("nothing in your mail that your route up to " .. take.upto .. " still needs."))
+  take = nil; self:Hide()
+end)
+
+function L.takeLabel(b)
+  local stepN = ProfessionWizardDB.takeSteps or 50
+  b.text:SetText(stepN > 0 and ("TAKE FOR NEXT " .. stepN) or "TAKE FOR ROUTE")
+end
+
+function L.takeButton()
+  if L.takeBtn or not _G.InboxFrame then
+    if L.takeBtn then L.takeLabel(L.takeBtn) end
+    return
+  end
+  local b = chip(_G.InboxFrame, "TAKE FOR NEXT 50", 150)
+  b:SetPoint("BOTTOMLEFT", _G.MailFrame or _G.InboxFrame, "TOPLEFT", 60, 2)
+  b:SetFrameStrata("HIGH")
+  b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  b:SetScript("OnClick", function(self, button)
+    if button == "RightButton" then
+      local cur = ProfessionWizardDB.takeSteps or 50
+      local nxt = TAKE_STEPS[1]
+      for k, v in ipairs(TAKE_STEPS) do if v == cur then nxt = TAKE_STEPS[k % #TAKE_STEPS + 1] end end
+      ProfessionWizardDB.takeSteps = nxt
+      L.takeLabel(self)
+      return
+    end
+    if take then take = nil; takeFrame:Hide(); Print("stopped."); return end
+    local want, pid, upto = L.takeWants()
+    if not want then Print("no route here: open the panel on the profession you're levelling first."); return end
+    take = { want = want, wait = 0, n = 0, upto = upto }
+    Print("taking what " .. profName(pid) .. " needs up to " .. upto .. " from your mail...")
+    takeFrame:Show()
+  end)
+  tip(b, "Take for your route",
+    "Takes out of your mail only the materials the next skill points of your route use (the profession shown in the panel), less what's in your bags. Whole stacks, one at a time; mails with cash on delivery are left alone.",
+    "Right-click: next 25, 50 or 100 skill points, or up to your target. Click again while it runs to stop.")
+  L.takeBtn = b
+  L.takeLabel(b)
+end
+
 function L.sendTabShown()
   return _G.SendMailFrame and _G.SendMailFrame:IsShown() and _G.MailFrame and _G.MailFrame:IsShown()
 end
@@ -4421,7 +4526,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
   end
   if event == "GET_ITEM_INFO_RECEIVED" then soon(); return end
   if event == "BAG_UPDATE_DELAYED" then recipeCache = nil end
-  if event == "MAIL_SHOW" then mailShown = true end
+  if event == "MAIL_SHOW" then mailShown = true; pcall(L.takeButton) end
   if event == "MAIL_INBOX_UPDATE" and mailShown then
     mailOpen = true
     -- straight away, not a second later: closing the mailbox quickly kept the old contents
