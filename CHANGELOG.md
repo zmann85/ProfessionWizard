@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- A material that's needed both as it is and for something you make (Silk Cloth for Bolts of Silk Cloth) showed a
+  bare number under HAVE. It now says where it is, e.g. "0 + 100 alts".
+
 ## v1.12.0 (2026-11-26)
 
 ### Fixed

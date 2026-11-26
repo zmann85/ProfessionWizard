@@ -3741,8 +3741,16 @@ refresh = function()
       r.need:SetText(tostring(row.need))
       local smelt = row.makeRec and row.makeRec.prof == MINING
       if row.haveHere then
-        -- a share of what you have (the rest counts on the item's other line)
-        r.have:SetText(tostring(row.haveHere))
+        -- a share of what you have (the rest counts on the item's other line): from your bags first, then your
+        -- mail, your alts and what you craft, so you can see where it is
+        local left, parts = row.haveHere, {}
+        local function take(n, label)
+          local t = math.min(left, n or 0)
+          left = left - t
+          if label == nil then parts[#parts + 1] = tostring(t) elseif t > 0 then parts[#parts + 1] = t .. label end
+        end
+        take(row.own, nil); take(row.mail, " mail"); take(row.alts, " alts"); take(row.crafted, " crafted")
+        r.have:SetText(table.concat(parts, " + "))
       else
         local parts = { tostring(row.own) }
         if row.mail > 0 then parts[#parts + 1] = row.mail .. " mail" end
