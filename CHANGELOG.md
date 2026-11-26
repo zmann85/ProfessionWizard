@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Pin recipes: PIN RECIPE (next to CRAFTS) searches the profession's recipes, and clicking one pins it. The route
+  then uses it wherever it's orange or yellow, whatever it costs (the cheapest pinned one where several overlap),
+  and the cheapest recipes elsewhere. A pinned recipe you'd buy or learn counts its price. Right-click a step to
+  pin or unpin its recipe.
+
 ## v1.11.0 (2026-11-26)
 
 ### Changed

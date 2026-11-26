@@ -825,8 +825,26 @@ function L.usable(r, from)
   return false
 end
 
+-- recipes you pinned: the route uses them wherever they're orange or yellow, whatever they cost
+function L.pins(pid)
+  ProfessionWizardDB.pins = ProfessionWizardDB.pins or {}
+  local k = myKey() .. ":" .. pid
+  ProfessionWizardDB.pins[k] = ProfessionWizardDB.pins[k] or {}
+  return ProfessionWizardDB.pins[k]
+end
+
+function L.togglePin(r)
+  local pins = L.pins(r.prof)
+  pins[r.spell] = not pins[r.spell] or nil
+  for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
+    if type(byProf) == "table" and type(byProf[r.prof]) == "table" then byProf[r.prof].dirty = true end
+  end
+  Print((pins[r.spell] and "pinned " or "unpinned ") .. r.name .. ".")
+end
+
 function L.findRoute(pid, from, to)
   local ctx = newCtx(pid, from)
+  local pins = L.pins(pid)
   local cands, waiting, unpriced = {}, 0, {}
   -- USE WHAT I HAVE: materials you own (bags, bank, mail, alts as counted) cost nothing until they run out
   local owned = ProfessionWizardDB.useOwned and {} or nil
@@ -837,6 +855,10 @@ function L.findRoute(pid, from, to)
   for _, r in ipairs(recipes(pid).list) do
     if r.g > from and r.learn < to then
       local ok, plansCost, where = L.usable(r, from)
+      if not ok and pins[r.spell] then
+        -- pinned: you mean to get it, from a recipe if it takes one
+        ok, plansCost, where = true, (r.plans or 0) > 0 and (buyPrice(r.plans) or 0) or (r.trainer and L.trainCost(r) or 0), "pinned"
+      end
       if ok then
         -- its materials as costed when you get to use it: by then you may make some of them yourself
         local cx = L.ctxAt(pid, math.max(from, r.learn), ctxs)
@@ -852,7 +874,7 @@ function L.findRoute(pid, from, to)
             local sp = L.returnPrice(r.creates)
             if sp then back = sp * r.made else waiting = waiting + 1 end
           end
-          cands[#cands + 1] = { r = r, mats = c, back = back, net = c - back, plans = plansCost or 0, where = where }
+          cands[#cands + 1] = { r = r, mats = c, back = back, net = c - back, plans = plansCost or 0, where = where, pinned = pins[r.spell] }
           if owned then
             -- per material: what one costs, so owned ones can be taken off below
             local each = {}
@@ -868,9 +890,14 @@ function L.findRoute(pid, from, to)
   local cur
   for s = from, to - 1 do
     local best, bestScore
+    -- a pinned recipe that's orange or yellow here wins; the cheapest of them if several
+    local pinnedHere = false
+    for _, cd in ipairs(cands) do
+      if cd.pinned and L.chance(cd.r, s) > 0 and s < (cd.r.y + cd.r.g) / 2 then pinnedHere = true; break end
+    end
     for _, cd in ipairs(cands) do
       local p = L.chance(cd.r, s)
-      if p >= MIN_CHANCE then
+      if p >= MIN_CHANCE and (not pinnedHere or (cd.pinned and s < (cd.r.y + cd.r.g) / 2)) then
         local score = (cd.mats - cd.back * backW + PER_CRAFT) / p
         if owned and cd.each then
           local crafts, c = 1 / p, 0
@@ -1817,11 +1844,14 @@ function L.makeStep(i)
       if r.learn > (st.from or 0) then GameTooltip:AddLine("You can learn it at " .. r.learn .. ".", 0.8, 0.8, 0.8) end
       GameTooltip:AddLine("Click to search the auction house for the recipe, shift-click to link it.", 1, 1, 1, true)
     end
+    GameTooltip:AddLine(L.pins(r.prof)[r.spell] and "Right-click to unpin it." or "Right-click to pin it: the route then uses it wherever it's orange or yellow.",
+      0.6, 0.6, 0.6, true)
     GameTooltip:Show()
   end)
   l:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  l:SetScript("OnMouseUp", function(self)
+  l:SetScript("OnMouseUp", function(self, button)
     local r = self.st and self.st.r
+    if r and button == "RightButton" then L.togglePin(r); refresh(); return end
     if not r or isKnown(r) or r.trainer or (r.plans or 0) == 0 then return end
     local name, link = GetItemInfo(r.plans)
     if IsShiftKeyDown() and link then insertLink(link); return end
@@ -1890,6 +1920,79 @@ local function setMinimap(show)
   local DBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
   if DBIcon and DBIcon:IsRegistered("ProfessionWizard") then
     if show then DBIcon:Show("ProfessionWizard") else DBIcon:Hide("ProfessionWizard") end
+  end
+end
+
+-- PIN RECIPE: a search over this profession's recipes; clicking one pins or unpins it
+function L.buildPinSearch(s)
+  local b = chip(frame, "PIN RECIPE", 96)
+  b:SetHeight(16)
+  frame.pinBtn = b
+  local pop = CreateFrame("Frame", nil, frame)
+  pop:SetSize(330, 26 + 10 * 18 + 8)
+  pop:SetPoint("TOPRIGHT", b, "BOTTOMRIGHT", 0, -2)
+  pop:SetFrameStrata("DIALOG")
+  pop:EnableMouse(true)
+  local bg = pop:CreateTexture(nil, "BACKGROUND"); bg:SetAllPoints(); bg:SetColorTexture(s.bg[1], s.bg[2], s.bg[3], 0.98)
+  edges(pop, 1, 1, 1, 0.25)
+  pop:Hide()
+  frame.pinPop = pop
+  local eb = CreateFrame("EditBox", nil, pop)
+  eb:SetSize(314, 20); eb:SetPoint("TOPLEFT", 8, -6)
+  eb:SetAutoFocus(false); eb:SetFont(fontPath(), 12, ""); eb:SetTextColor(1, 1, 1, 0.95)
+  local ebg = eb:CreateTexture(nil, "BACKGROUND"); ebg:SetAllPoints(); ebg:SetColorTexture(s.btn[1], s.btn[2], s.btn[3], 1)
+  edges(eb, 1, 1, 1, 0.18)
+  eb:SetTextInsets(6, 6, 0, 0)
+  local hint = text(eb, 11, 1, 1, 1, 0.35); hint:SetPoint("LEFT", 6, 0); hint:SetText("type part of a recipe name")
+  pop.eb, pop.hint, pop.lines = eb, hint, {}
+  for i = 1, 10 do
+    local l = CreateFrame("Button", nil, pop)
+    l:SetSize(314, 18); l:SetPoint("TOPLEFT", 8, -28 - (i - 1) * 18)
+    l.hl = l:CreateTexture(nil, "HIGHLIGHT"); l.hl:SetAllPoints(); l.hl:SetColorTexture(1, 1, 1, 0.08)
+    l.name = text(l, 11, 1, 1, 1, 0.95); l.name:SetPoint("LEFT", 2, 0); l.name:SetWidth(190); l.name:SetJustifyH("LEFT")
+    l.info = text(l, 10, 1, 1, 1, 0.55); l.info:SetPoint("RIGHT", -2, 0); l.info:SetJustifyH("RIGHT")
+    l:SetScript("OnClick", function(self)
+      if self.r then L.togglePin(self.r); L.pinSearch(); refresh() end
+    end)
+    l:Hide()
+    pop.lines[i] = l
+  end
+  eb:SetScript("OnTextChanged", function() L.pinSearch() end)
+  eb:SetScript("OnEscapePressed", function(self) self:ClearFocus(); pop:Hide() end)
+  eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+  b:SetScript("OnClick", function()
+    pop:SetShown(not pop:IsShown())
+    if pop:IsShown() then eb:SetText(""); eb:SetFocus(); L.pinSearch() end
+  end)
+  tip(b, "Pin a recipe", "Search this profession's recipes and click one to pin it: the route then uses it wherever it's orange or yellow, whatever it costs.",
+    "Click a pinned one again (or right-click its step) to unpin it.")
+end
+
+-- fill the search list: pinned ones first while the box is empty, otherwise the names that match
+function L.pinSearch()
+  local pop = frame and frame.pinPop
+  if not pop or not pop:IsShown() then return end
+  local pid = shownProf()
+  if not pid then return end
+  local q = (pop.eb:GetText() or ""):lower()
+  pop.hint:SetShown(q == "")
+  local pins, found = L.pins(pid), {}
+  for _, r in ipairs(recipes(pid).list) do
+    if (q == "" and pins[r.spell]) or (#q >= 2 and r.name:lower():find(q, 1, true)) then found[#found + 1] = r end
+  end
+  table.sort(found, function(a, b) if a.learn ~= b.learn then return a.learn < b.learn end return a.name < b.name end)
+  local cur = (readSkill(pid)) or 1
+  for i, l in ipairs(pop.lines) do
+    local r = found[i]
+    l.r = r
+    if r then
+      local src = (ns.TRAINER_NOTES or {})[r.spell] and "special" or (r.trainer and "trainer") or ((r.plans or 0) > 0 and "recipe") or "?"
+      l.name:SetText(L.colorAt(r, math.max(cur, r.learn)) .. r.name .. "|r")
+      l.info:SetText((pins[r.spell] and "|cffffd172pinned|r  ·  " or "") .. "learn " .. r.learn .. "  ·  " .. r.y .. "-" .. r.g .. "  ·  " .. src)
+      l:Show()
+    else
+      l:Hide()
+    end
   end
 end
 
@@ -2351,6 +2454,7 @@ local function build()
   frame.hint = hint
 
   frame.stepsHead = text(frame, 11, ar, ag, ab, 0.9)
+  L.buildPinSearch(s)
   frame.stepsHead:SetText("CRAFTS")
   for i = 1, MAX_STEPS do stepLines[i] = L.makeStep(i) end
   for _, l in ipairs(stepLines) do
@@ -2988,6 +3092,7 @@ end
 local function renderSheet(g, warm, green, red, dim)
   for _, c in ipairs(profChips) do c:Hide() end
   frame.addProf:Hide()
+  frame.pinBtn:Hide(); frame.pinPop:Hide()
   for _, c in ipairs(frame.ctrl) do c:Hide() end
   for _, c in ipairs(frame.milestones) do c:Hide() end
   frame.cast:Hide(); frame.empty:Hide(); frame.more:Hide()
@@ -3311,7 +3416,7 @@ refresh = function()
     for _, l in ipairs(stepLines) do l:Hide() end
     for _, r in ipairs(rows) do r:Hide(); r.row = nil end
     frame.matHead:Hide(); frame.colNeed:Hide(); frame.colHave:Hide(); frame.colStat:Hide()
-    frame.stepsHead:Hide(); frame.foot:Hide(); frame.buy:Hide(); frame.share:Hide(); frame.more:Hide(); frame.cast:Hide()
+    frame.stepsHead:Hide(); frame.foot:Hide(); frame.buy:Hide(); frame.share:Hide(); frame.pinBtn:Hide(); frame.pinPop:Hide(); frame.more:Hide(); frame.cast:Hide()
     for _, c in ipairs(frame.ctrl) do c:Hide() end
     for _, c in ipairs(frame.milestones) do c:Hide() end
     placeSmelt(nil, 0, false, true)
@@ -3408,6 +3513,7 @@ refresh = function()
     frame.hint:Hide()
   end
   frame.stepsHead:ClearAllPoints(); frame.stepsHead:SetPoint("TOPLEFT", PAD, -y)
+  frame.pinBtn:ClearAllPoints(); frame.pinBtn:SetPoint("TOPRIGHT", -PAD, -y + 2); frame.pinBtn:Show()
   y = y + 16
   local vendorBack, matTotal, plansTotal, vendorOnly = 0, 0, 0, 0
   local stepCtx = { [cur] = ctx }
@@ -3460,7 +3566,7 @@ refresh = function()
         l.go:Hide(); l.amt:Hide()
       else
         local r = st.r
-        l.name:SetText(L.colorAt(r, st.from) .. r.name .. "|r")
+        l.name:SetText(L.colorAt(r, st.from) .. r.name .. "|r" .. (L.pins(pid)[r.spell] and (warm .. " (pinned)|r") or ""))
         l.crafts:SetText("x" .. st.crafts)
         -- cost per craft from today's prices (worked out above)
         local mc, back = st.matCost or 0, st.back or 0
