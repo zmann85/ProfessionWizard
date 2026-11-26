@@ -3644,7 +3644,7 @@ refresh = function()
     end
   end
   frame.planBuys = planBuys
-  placeFooter(y, missingKinds > 0 or #planBuys > 0, toSmelt, #steps > 0 and pid or nil)
+  placeFooter(y, missingKinds > 0 or #planBuys > 0, toSmelt, false, #steps > 0 and pid or nil)
 end
 
 ---------------------------------------------------------------------------
