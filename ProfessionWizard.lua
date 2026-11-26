@@ -1141,7 +1141,10 @@ saveGoals = function()
   for pid in pairs(shownSkills()) do
     if not PROF[pid].gather then
       local g = L.goalFor(pid)
-      if g then ProfessionWizardDB.goals[me .. ":" .. pid] = g end
+      if g then
+        g.share = ProfessionWizardDB.share and ProfessionWizardDB.share[me .. ":" .. pid] or nil
+        ProfessionWizardDB.goals[me .. ":" .. pid] = g
+      end
     end
   end
 end
@@ -2371,6 +2374,21 @@ local function build()
 
   frame.foot = text(frame, 11, 1, 1, 1, 0.55)
   frame.foot:SetWidth(W - PAD * 2); frame.foot:SetWordWrap(true); frame.foot:SetSpacing(3)
+  -- SHARE WITH ALTS: this profession's list shows on your alts' mail panel (off until switched on, per list)
+  frame.share = chip(frame, "SHARE WITH ALTS", 130)
+  frame.share:SetScript("OnClick", function()
+    local pid = shownProf()
+    if not pid then return end
+    local k = myKey() .. ":" .. pid
+    ProfessionWizardDB.share = ProfessionWizardDB.share or {}
+    ProfessionWizardDB.share[k] = not ProfessionWizardDB.share[k] or nil
+    local g = ProfessionWizardDB.goals and ProfessionWizardDB.goals[k]
+    if g then g.share = ProfessionWizardDB.share[k] end
+    refresh()
+  end)
+  tip(frame.share, "Share with alts",
+    "On: what this profession still needs shows on your other characters' mail panel, so they can send it with FILL MAIL.",
+    "Off: it stays to yourself. LISTS still shows it.")
   frame.buy = chip(frame, "SEARCH MISSING", 120)
   frame.buy:SetScript("OnClick", function()
     local names, qty = {}, {}
@@ -2549,14 +2567,21 @@ local function placeSmelt(list, y, buyShown, hide)
 end
 
 -- the summary gets its own lines across the window, the buttons (SEARCH MISSING, SMELT ...) a row under it
-local function placeFooter(y, buyShown, smeltList, hideSmelt)
+local function placeFooter(y, buyShown, smeltList, hideSmelt, sharePid)
   frame.foot:ClearAllPoints(); frame.foot:SetPoint("TOPLEFT", PAD, -y)
   frame.foot:Show()
   y = y + math.ceil(frame.foot:GetStringHeight()) + 8
   frame.buy:ClearAllPoints(); frame.buy:SetPoint("TOPRIGHT", -PAD, -y)
   frame.buy:SetShown(buyShown)
+  frame.share:ClearAllPoints(); frame.share:SetPoint("TOPLEFT", PAD, -y)
+  if sharePid then
+    frame.share:SetActive(ProfessionWizardDB.share and ProfessionWizardDB.share[myKey() .. ":" .. sharePid] and true or false)
+    frame.share:Show()
+  else
+    frame.share:Hide()
+  end
   placeSmelt(smeltList, y, buyShown, hideSmelt)
-  local row = buyShown or frame.smeltAll:IsShown() or (smeltBtn and smeltBtn:IsShown())
+  local row = buyShown or sharePid or frame.smeltAll:IsShown() or (smeltBtn and smeltBtn:IsShown())
   frame:SetHeight(y + (row and 34 or 10))
 end
 
@@ -3286,7 +3311,7 @@ refresh = function()
     for _, l in ipairs(stepLines) do l:Hide() end
     for _, r in ipairs(rows) do r:Hide(); r.row = nil end
     frame.matHead:Hide(); frame.colNeed:Hide(); frame.colHave:Hide(); frame.colStat:Hide()
-    frame.stepsHead:Hide(); frame.foot:Hide(); frame.buy:Hide(); frame.more:Hide(); frame.cast:Hide()
+    frame.stepsHead:Hide(); frame.foot:Hide(); frame.buy:Hide(); frame.share:Hide(); frame.more:Hide(); frame.cast:Hide()
     for _, c in ipairs(frame.ctrl) do c:Hide() end
     for _, c in ipairs(frame.milestones) do c:Hide() end
     placeSmelt(nil, 0, false, true)
@@ -3619,7 +3644,7 @@ refresh = function()
     end
   end
   frame.planBuys = planBuys
-  placeFooter(y, missingKinds > 0 or #planBuys > 0, toSmelt)
+  placeFooter(y, missingKinds > 0 or #planBuys > 0, toSmelt, #steps > 0 and pid or nil)
 end
 
 ---------------------------------------------------------------------------
@@ -3736,7 +3761,8 @@ function L.otherGoals()
   local list = {}
   local realm, faction, me = GetRealmName(), UnitFactionGroup("player"), myKey()
   for k, g in pairs(ProfessionWizardDB.goals or {}) do
-    if g.owner ~= me and g.realm == realm and g.faction == faction and next(g.needs or {}) then g.key = k; list[#list + 1] = g end
+    -- only lists their crafter switched SHARE WITH ALTS on for
+    if g.owner ~= me and g.realm == realm and g.faction == faction and g.share and next(g.needs or {}) then g.key = k; list[#list + 1] = g end
   end
   table.sort(list, function(a, b) return (a.time or 0) > (b.time or 0) end)
   return list
