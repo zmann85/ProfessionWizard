@@ -3,9 +3,9 @@
 ## Unreleased
 
 ### Fixed
-- Your reagent bag and WoW Forever's bank tabs count now. Materials in the reagent bag were missed everywhere
-  (HAVE, the mail panel, FILL MAIL), so an alt with 10 Rugged Leather there showed nothing to send; the bank
-  was read the Classic way and could miss the tabs.
+- Your reagent bag and WoW Forever's bank tabs count now. Materials in the reagent bag were missed by the mail
+  panel, FILL MAIL and what your alts are saved to have, so an alt with 10 Rugged Leather there showed nothing to
+  send; the bank was read the Classic way and could miss the tabs.
 - Vendor prices you see are saved again (with your reputation discount): WoW Forever's merchant window answers
   through C_MerchantFrame, so nothing was read. Until you've seen a vendor sell an item, its price is still
   estimated at four times what a vendor pays for it, without any discount.
