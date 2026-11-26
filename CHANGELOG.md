@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.13.0 (2026-11-26)
 
 ### Added
 - TAKE FOR NEXT on the inbox: takes out of your mail only the materials the next skill points of a route use,
