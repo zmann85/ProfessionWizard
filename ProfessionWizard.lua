@@ -517,13 +517,26 @@ function L.scanBags(list)
   return out
 end
 
+-- your bags: the backpack and four bags, and WoW Forever's reagent bag
 function L.bagList()
   local l = {}
   for b = 0, (NUM_BAG_SLOTS or 4) do l[#l + 1] = b end
+  local reagent = Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag
+  if reagent then l[#l + 1] = reagent end
   return l
 end
 
+-- the bank: WoW Forever's bank tabs where the client has them, otherwise Classic's bank and bank bags
 function L.bankList()
+  local BI = Enum and Enum.BagIndex
+  if BI and BI.CharacterBankTab_1 then
+    local l = {}
+    for i = 1, 9 do
+      local id = BI["CharacterBankTab_" .. i]
+      if id then l[#l + 1] = id end
+    end
+    return l
+  end
   local l = { BANK_CONTAINER or -1 }
   local first = (NUM_BAG_SLOTS or 4) + 1
   for b = first, first + (NUM_BANKBAGSLOTS or 6) - 1 do l[#l + 1] = b end
@@ -3900,7 +3913,7 @@ local mpPick
 
 function L.bagStacks(id)
   local out = {}
-  for bag = 0, (NUM_BAG_SLOTS or 4) do
+  for _, bag in ipairs(L.bagList()) do
     for slot = 1, numSlots(bag) do
       local iid, cnt, locked = slotInfo(bag, slot)
       if iid == id and not locked then out[#out + 1] = { bag = bag, slot = slot, count = cnt or 1 } end
