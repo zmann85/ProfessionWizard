@@ -1135,7 +1135,9 @@ local function materials(steps, ctx)
         local r1 = left > 0 and L.fromOwned(id, ctx)
         if r1 then
           local src, k = r1.mats[1][1], r1.mats[1][2]
-          local srcHave = math.max(0, L.haveOf(src) - (reserved[src] or 0) - (base[src] or 0))
+          -- what's left of it after this pass's other uses (not last pass's, which were this line's own:
+          -- counting those flipped the plan back and forth and left the material unused)
+          local srcHave = math.max(0, L.haveOf(src) - (newReserved[src] or 0) - (base[src] or 0))
           local crafts = math.min(math.floor(srcHave / k), math.ceil(left / r1.made))
           if crafts > 0 then
             makes = crafts

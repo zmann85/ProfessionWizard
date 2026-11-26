@@ -9,6 +9,9 @@
   skipped.
 
 ### Fixed
+- Materials you have that the route turns into something else (Silk Cloth into Bolts of Silk Cloth) could go
+  uncounted: the list flipped between using them and not, and ended on "not", so you were told to buy cloth you
+  already had.
 - A material that's needed both as it is and for something you make (Silk Cloth for Bolts of Silk Cloth) showed a
   bare number under HAVE. It now says where it is, e.g. "0 + 100 alts".
 
