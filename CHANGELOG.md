@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+- Mail on an alt stayed counted after you returned it or took it and closed the mailbox right away: the mailbox is
+  now saved the moment it changes. A returned mail also counts as on the way to its sender, like mail you send.
+
 ### Added
 - Pin recipes: PIN RECIPE (next to CRAFTS) searches the profession's recipes, and clicking one pins it. The route
   then uses it wherever it's orange or yellow, whatever it costs (the cheapest pinned one where several overlap),

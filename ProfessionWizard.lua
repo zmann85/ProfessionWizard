@@ -675,9 +675,31 @@ function L.noteOutgoing(recipient)
   outgoing = any and { to = recipient, items = items } or nil
 end
 
+-- items mailed to one of your characters count for them as on the way (outgoing: { to = name, items = {} })
 function L.deliverOutgoing()
   if not outgoing then return end
-  local who = L.shortName(outgoing.to)
+  L.creditMail(outgoing.to, outgoing.items)
+  outgoing = nil
+end
+
+-- a mail you return goes back to its sender: off this character's mailbox, on the way to the sender
+function L.onReturnMail(index)
+  local c = ProfessionWizardDB and ProfessionWizardDB.chars and ProfessionWizardDB.chars[myKey()]
+  if not c or not GetInboxItem then return end
+  local items = {}
+  for a = 1, (ATTACHMENTS_MAX_RECEIVE or 16) do
+    local ok, _, itemID, _, cnt = pcall(GetInboxItem, index, a)
+    if ok and type(itemID) == "number" and WANT[itemID] then items[itemID] = (items[itemID] or 0) + (cnt or 1) end
+  end
+  if not next(items) then return end
+  c.mail = c.mail or {}
+  for id, n in pairs(items) do c.mail[id] = math.max(0, (c.mail[id] or 0) - n) end
+  local okH, _, _, sender = pcall(GetInboxHeaderInfo, index)
+  if okH and sender then L.creditMail(sender, items) end
+end
+
+function L.creditMail(to, items)
+  local who = L.shortName(to)
   local realm, faction = GetRealmName(), UnitFactionGroup("player")
   local target, targetKey
   -- the full name; a first name alone only when one character has it
@@ -692,15 +714,14 @@ function L.deliverOutgoing()
   if not target and nFirst == 1 then target, targetKey = ProfessionWizardDB.chars[byFirst], byFirst end
   if target and targetKey ~= myKey() then
     target.incoming = target.incoming or {}
-    for id, n in pairs(outgoing.items) do target.incoming[id] = (target.incoming[id] or 0) + n end
+    for id, n in pairs(items) do target.incoming[id] = (target.incoming[id] or 0) + n end
     for _, g in pairs(ProfessionWizardDB.goals or {}) do
       if g.owner == targetKey then
         g.sent = g.sent or {}
-        for id, n in pairs(outgoing.items) do g.sent[id] = (g.sent[id] or 0) + n end
+        for id, n in pairs(items) do g.sent[id] = (g.sent[id] or 0) + n end
       end
     end
   end
-  outgoing = nil
 end
 
 ---------------------------------------------------------------------------
@@ -4279,6 +4300,7 @@ ev:SetScript("OnEvent", function(self, event, arg1)
       pcall(self.RegisterEvent, self, e)
     end
     if SendMail then pcall(hooksecurefunc, "SendMail", function(recipient) pcall(L.noteOutgoing, recipient) end) end
+    if ReturnInboxItem then pcall(hooksecurefunc, "ReturnInboxItem", function(index) pcall(L.onReturnMail, index) end) end
     if PlaceAuctionBid then
       pcall(hooksecurefunc, "PlaceAuctionBid", function(listType, index, bid) pcall(L.noteBid, listType, index, bid) end)
     end
@@ -4346,7 +4368,12 @@ ev:SetScript("OnEvent", function(self, event, arg1)
   if event == "GET_ITEM_INFO_RECEIVED" then soon(); return end
   if event == "BAG_UPDATE_DELAYED" then recipeCache = nil end
   if event == "MAIL_SHOW" then mailShown = true end
-  if event == "MAIL_INBOX_UPDATE" and mailShown then mailOpen = true end
+  if event == "MAIL_INBOX_UPDATE" and mailShown then
+    mailOpen = true
+    -- straight away, not a second later: closing the mailbox quickly kept the old contents
+    local c = ProfessionWizardDB.chars and ProfessionWizardDB.chars[myKey()]
+    if c then c.mail = L.readInbox(); c.incoming = {}; c.mailTime = time() end
+  end
   if event == "MAIL_CLOSED" then
     mailOpen, mailShown = false, false
   end
