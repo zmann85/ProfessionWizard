@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.14.0 (2026-11-26)
 
 ### Added
 - GOALS (top right of the panel): a shopping list for things you want made, from any profession and whatever you
