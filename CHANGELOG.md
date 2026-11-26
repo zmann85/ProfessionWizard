@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.12.0 (2026-11-26)
 
 ### Fixed
 - Your reagent bag and WoW Forever's bank tabs count now. Materials in the reagent bag were missed by the mail
