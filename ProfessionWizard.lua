@@ -1739,6 +1739,10 @@ function L.makeRow(i)
   r:SetSize(W - PAD * 2, ROW_H)
   r.hl = r:CreateTexture(nil, "BACKGROUND"); r.hl:SetAllPoints()
   r.hl:SetColorTexture(1, 1, 1, 0.06); r.hl:Hide()
+  -- a thin line above a group (goals: one group per wanted item)
+  r.sep = r:CreateTexture(nil, "ARTWORK")
+  r.sep:SetHeight(1); r.sep:SetPoint("TOPLEFT", 0, 1); r.sep:SetPoint("TOPRIGHT", 0, 1)
+  r.sep:SetColorTexture(1, 1, 1, 0.14); r.sep:Hide()
   r.icon = r:CreateTexture(nil, "ARTWORK")
   r.icon:SetSize(16, 16); r.icon:SetPoint("LEFT", 0, 0)
   r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -1759,6 +1763,12 @@ function L.makeRow(i)
     if not self.row then return end
     local row = self.row
     self.hl:Show()
+    if row.header then
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetItemByID(row.id)
+      GameTooltip:Show()
+      return
+    end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetItemByID(row.id)
     GameTooltip:AddLine(" ")
@@ -3299,13 +3309,6 @@ function L.renderGoals(warm, green, red, dim)
       l.st = nil; l:Hide()
     end
   end
-  for _, w in ipairs(wish) do
-    local r = recipes(w.pid).bySpell[w.spell]
-    for _, m in ipairs(r and r.mats or {}) do
-      if not need[m[1]] then order[#order + 1] = m[1] end
-      need[m[1]] = (need[m[1]] or 0) + m[2] * math.ceil(w.n / math.max(1, r.made or 1))
-    end
-  end
   if #wish == 0 then
     frame.empty:SetText("Nothing here yet. Click ADD RECIPE and pick what you want made, from any profession.")
     frame.empty:ClearAllPoints(); frame.empty:SetPoint("TOPLEFT", PAD, -y - 4); frame.empty:Show()
@@ -3314,18 +3317,37 @@ function L.renderGoals(warm, green, red, dim)
 
   y = y + 10
   frame.matHead:ClearAllPoints(); frame.matHead:SetPoint("TOPLEFT", PAD, -y); frame.matHead:Show()
-  frame.matHead:SetText("MATERIALS")
   frame.colNeed:ClearAllPoints(); frame.colNeed:SetPoint("TOPLEFT", PAD + X_NEED, -y); frame.colNeed:Show()
   frame.colHave:ClearAllPoints(); frame.colHave:SetPoint("TOPLEFT", PAD + X_HAVE, -y); frame.colHave:Show()
   frame.colStat:ClearAllPoints(); frame.colStat:SetPoint("TOPLEFT", PAD + X_STAT, -y); frame.colStat:Show()
   y = y + 18
+  -- one group per wanted item: a line with the item, then its materials. What you have goes to the first
+  -- item on the list that needs it, then the next (your bags first, then mail, then alts).
+  local pool = {}
   local list = {}
-  for _, id in ipairs(order) do
-    local row = L.newRow(id, need[id])
-    row.missing = math.max(0, row.need - row.have)
-    list[#list + 1] = row
+  for _, w in ipairs(wish) do
+    local r = recipes(w.pid).bySpell[w.spell]
+    if r then
+      local crafts = math.ceil(w.n / math.max(1, r.made or 1))
+      list[#list + 1] = { header = true, id = r.creates, name = r.name, n = w.n, missing = 0, need = 0 }
+      local group = {}
+      for _, m in ipairs(r.mats) do
+        local id, n = m[1], m[2] * crafts
+        if not pool[id] then
+          local base = L.newRow(id, 0)
+          pool[id] = { own = base.own, mail = base.mail, alts = base.alts, parts = base.parts }
+        end
+        local p = pool[id]
+        local tOwn = math.min(p.own, n); p.own = p.own - tOwn
+        local tMail = math.min(p.mail, n - tOwn); p.mail = p.mail - tMail
+        local tAlts = math.min(p.alts, n - tOwn - tMail); p.alts = p.alts - tAlts
+        group[#group + 1] = { id = id, need = n, own = tOwn, mail = tMail, alts = tAlts, parts = p.parts,
+          have = tOwn + tMail + tAlts, missing = n - tOwn - tMail - tAlts }
+      end
+      table.sort(group, function(a, b) return (GetItemInfo(a.id) or "") < (GetItemInfo(b.id) or "") end)
+      for _, g in ipairs(group) do list[#list + 1] = g end
+    end
   end
-  L.sortRows(list)
   frame.list = list
   local cost, missingKinds = 0, 0
   for _, row in ipairs(list) do
@@ -3335,37 +3357,49 @@ function L.renderGoals(warm, green, red, dim)
       if p then cost = cost + p * row.missing end
     end
   end
+  -- the list scrolls with the mouse wheel when it's long
+  local mVis = #rows
+  L.scroll.mat = math.min(L.scroll.mat, math.max(0, #list - mVis))
+  local mOff = L.scroll.mat
+  frame.matHead:SetText(#list > mVis and string.format("MATERIALS  " .. dim .. "%d-%d of %d  ·  scroll|r",
+    mOff + 1, mOff + mVis, #list) or "MATERIALS")
   for i, r in ipairs(rows) do
-    local row = list[i]
+    local row = list[i + mOff]
     r.act:Hide()
     if row then
       r.row = row
       r:ClearAllPoints(); r:SetPoint("TOPLEFT", PAD, -y); y = y + ROW_H
-      r.icon:ClearAllPoints(); r.icon:SetPoint("LEFT", 0, 0)
-      r.name:ClearAllPoints(); r.name:SetPoint("LEFT", 22, 0); r.name:SetWidth(220)
-      r.icon:SetTexture(GetIcon and GetIcon(row.id) or 134400)
-      r.name:SetText(GetItemInfo(row.id) or ("item " .. row.id))
-      r.need:SetText(tostring(row.need))
-      local parts = { tostring(row.own) }
-      if row.mail > 0 then parts[#parts + 1] = row.mail .. " mail" end
-      if row.alts > 0 then parts[#parts + 1] = row.alts .. " alts" end
-      r.have:SetText(table.concat(parts, " + "))
-      if row.missing > 0 then
-        local p, where = buyPrice(row.id)
-        r.status:SetText(red .. row.missing .. "|r" .. (p and (dim .. "  ~" .. money(p * row.missing) .. (where == "vendor" and " vendor" or "") .. "|r") or (dim .. "  no price|r")))
+      if row.header then
+        r.sep:SetShown(i > 1)
+        r.icon:ClearAllPoints(); r.icon:SetPoint("LEFT", 0, 0)
+        r.name:ClearAllPoints(); r.name:SetPoint("LEFT", 22, 0); r.name:SetWidth(400)
+        r.icon:SetTexture(GetIcon and GetIcon(row.id) or 134400)
+        r.name:SetText(warm .. row.name .. "|r" .. (row.n > 1 and (dim .. "  x" .. row.n .. "|r") or ""))
+        r.name:SetTextColor(1, 1, 1, 1)
+        r.need:SetText(""); r.have:SetText(""); r.status:SetText("")
       else
-        r.status:SetText(green .. "done|r")
+        r.sep:Hide()
+        r.icon:ClearAllPoints(); r.icon:SetPoint("LEFT", 18, 0)
+        r.name:ClearAllPoints(); r.name:SetPoint("LEFT", 40, 0); r.name:SetWidth(202)
+        r.icon:SetTexture(GetIcon and GetIcon(row.id) or 134400)
+        r.name:SetText(GetItemInfo(row.id) or ("item " .. row.id))
+        r.need:SetText(tostring(row.need))
+        local parts = { tostring(row.own) }
+        if row.mail > 0 then parts[#parts + 1] = row.mail .. " mail" end
+        if row.alts > 0 then parts[#parts + 1] = row.alts .. " alts" end
+        r.have:SetText(table.concat(parts, " + "))
+        if row.missing > 0 then
+          local p, where = buyPrice(row.id)
+          r.status:SetText(red .. row.missing .. "|r" .. (p and (dim .. "  ~" .. money(p * row.missing) .. (where == "vendor" and " vendor" or "") .. "|r") or (dim .. "  no price|r")))
+        else
+          r.status:SetText(green .. "done|r")
+        end
+        r.name:SetTextColor(1, 1, 1, row.missing > 0 and 0.9 or 0.45)
       end
-      r.name:SetTextColor(1, 1, 1, row.missing > 0 and 0.9 or 0.45)
       r:Show()
     else
-      r.row = nil; r:Hide()
+      r.row = nil; r.sep:Hide(); r:Hide()
     end
-  end
-  if #list > #rows then
-    frame.more:SetText(string.format("+ %d more (they're in SEARCH MISSING)", #list - #rows))
-    frame.more:ClearAllPoints(); frame.more:SetPoint("TOPLEFT", PAD + 22, -y - 2); frame.more:Show()
-    y = y + 16
   end
   y = y + 8
   local foot
@@ -3450,6 +3484,7 @@ local function renderSheet(g, warm, green, red, dim)
     r.act:Hide()
     if it then
       r.row = it
+      r.sep:Hide()
       r:ClearAllPoints(); r:SetPoint("TOPLEFT", PAD, -y); y = y + ROW_H
       r.icon:ClearAllPoints(); r.icon:SetPoint("LEFT", 0, 0)
       r.name:ClearAllPoints(); r.name:SetPoint("LEFT", 22, 0); r.name:SetWidth(220)
@@ -3960,6 +3995,7 @@ refresh = function()
     local row = i <= mVis and list[i + mOff] or nil
     if row then
       r.row = row
+      r.sep:Hide()
       r:ClearAllPoints(); r:SetPoint("TOPLEFT", PAD, -y); y = y + ROW_H
       local name = GetItemInfo(row.id)
       local indent = row.child and 18 or 0
