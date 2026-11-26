@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.11.0 (2026-11-26)
 
 ### Changed
 - A crafter's list only shows on your alts' mail panel once you switch SHARE WITH ALTS on for it (bottom left of
