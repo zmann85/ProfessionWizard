@@ -4140,12 +4140,22 @@ end
 ---------------------------------------------------------------------------
 -- Inbox: TAKE FOR ROUTE takes only what the next part of your route needs out of the mail
 ---------------------------------------------------------------------------
-local TAKE_STEPS = { 25, 50, 100, 0 } -- skill points ahead; 0 = up to your target
-local take -- { want = { [id] = n }, wait = time }
+local take -- { want = { [id] = n }, wait = time, n = stacks taken, upto = skill, tried = {} }
 
--- what the next skill points of the shown profession's route use, less what's in your bags already
-function L.takeWants()
-  local pid = shownProf()
+-- the professions whose route still has skill points to go, the one shown in the panel first
+function L.takeProfs()
+  local out, shown = {}, shownProf()
+  local skills = readSkills()
+  for pid, sk in pairs(skills) do
+    local route = routeStore()[pid]
+    if not PROF[pid].gather and route and route.segs and sk.rank < targetFor(pid, sk.rank) then out[#out + 1] = pid end
+  end
+  table.sort(out, function(a, b) if a == shown then return true elseif b == shown then return false end return a < b end)
+  return out
+end
+
+-- what the next skill points of that profession's route use, less what's in your bags (reagent bag included)
+function L.takeWants(pid)
   local cur = pid and readSkill(pid)
   if not cur then return nil end
   local target = targetFor(pid, cur)
@@ -4157,11 +4167,10 @@ function L.takeWants()
   local want = {}
   for _, row in ipairs(list) do want[row.id] = (want[row.id] or 0) + (row.need or 0) end
   for id, n in pairs(want) do
-    local inBags = GetItemCount and GetItemCount(id, false) or 0
-    want[id] = n - inBags
+    want[id] = n - L.bagCount(id)
     if want[id] <= 0 then want[id] = nil end
   end
-  return want, pid, upto
+  return want, upto
 end
 
 local function freeSlots()
@@ -4174,7 +4183,8 @@ local function freeSlots()
   return n
 end
 
--- one attachment at a time (the server takes them one by one); mails with cash on delivery are left alone
+-- one attachment at a time (the server hands them out one by one). One that's still there after a try (it
+-- didn't fit anywhere) is skipped, not tried forever. Mails with cash on delivery are left alone.
 local takeFrame = CreateFrame("Frame")
 takeFrame:Hide()
 takeFrame:SetScript("OnUpdate", function(self)
@@ -4186,60 +4196,87 @@ takeFrame:SetScript("OnUpdate", function(self)
     take = nil; self:Hide(); return
   end
   for i = 1, (GetInboxNumItems() or 0) do
-    local _, _, _, _, _, cod = GetInboxHeaderInfo(i)
+    local _, _, sender, subject, _, cod, daysLeft = GetInboxHeaderInfo(i)
     if not cod or cod == 0 then
       for a = 1, (ATTACHMENTS_MAX_RECEIVE or 16) do
         local _, itemID, _, cnt = GetInboxItem(i, a)
-        if itemID and (take.want[itemID] or 0) > 0 then
+        -- this attachment of this mail (identical auction mails differ in how long they have left)
+        local sig = table.concat({ tostring(sender), tostring(subject), tostring(daysLeft), a, tostring(itemID), tostring(cnt) }, "|")
+        if itemID and (take.want[itemID] or 0) > 0 and not take.tried[sig] then
+          take.tried[sig] = true
           take.want[itemID] = take.want[itemID] - (cnt or 1)
           take.n = take.n + 1
           TakeInboxItem(i, a)
-          take.wait = GetTime() + 0.6
+          take.wait = GetTime() + 0.8
           return
         end
       end
     end
   end
-  Print(take.n > 0 and ("took " .. take.n .. " stacks for your route up to " .. take.upto .. ".")
-    or ("nothing in your mail that your route up to " .. take.upto .. " still needs."))
+  Print(take.n > 0 and ("took " .. take.n .. " stacks for " .. take.prof .. " up to " .. take.upto .. ".")
+    or ("nothing in your mail that " .. take.prof .. " still needs up to " .. take.upto .. "."))
   take = nil; self:Hide()
 end)
 
-function L.takeLabel(b)
-  local stepN = ProfessionWizardDB.takeSteps or 50
-  b.text:SetText(stepN > 0 and ("TAKE FOR NEXT " .. stepN) or "TAKE FOR ROUTE")
+function L.takeRefresh()
+  local t = L.takeUI
+  if not t then return end
+  local profs = L.takeProfs()
+  if not tContains(profs, t.pid or 0) then t.pid = profs[1] end
+  t.prof.text:SetText(t.pid and PROF[t.pid].short or "NO ROUTE")
+  t.prof:SetActive(false)
+  local n = ProfessionWizardDB.takeSteps or 50
+  if not t.eb:HasFocus() then t.eb:SetText(n > 0 and tostring(n) or "") end
+  t.hint:SetShown(n == 0 and not t.eb:HasFocus())
 end
 
 function L.takeButton()
-  if L.takeBtn or not _G.InboxFrame then
-    if L.takeBtn then L.takeLabel(L.takeBtn) end
-    return
-  end
-  local b = chip(_G.InboxFrame, "TAKE FOR NEXT 50", 150)
+  if L.takeUI or not _G.InboxFrame then L.takeRefresh(); return end
+  local s = scheme()
+  local t = {}
+  L.takeUI = t
+  -- [TAKE FOR NEXT] [ 50 ] points of [ALCHEMY]
+  local b = chip(_G.InboxFrame, "TAKE FOR NEXT", 104)
   b:SetPoint("BOTTOMLEFT", _G.MailFrame or _G.InboxFrame, "TOPLEFT", 60, 2)
   b:SetFrameStrata("HIGH")
-  b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-  b:SetScript("OnClick", function(self, button)
-    if button == "RightButton" then
-      local cur = ProfessionWizardDB.takeSteps or 50
-      local nxt = TAKE_STEPS[1]
-      for k, v in ipairs(TAKE_STEPS) do if v == cur then nxt = TAKE_STEPS[k % #TAKE_STEPS + 1] end end
-      ProfessionWizardDB.takeSteps = nxt
-      L.takeLabel(self)
-      return
-    end
+  local eb = CreateFrame("EditBox", nil, b)
+  eb:SetSize(40, 20); eb:SetPoint("LEFT", b, "RIGHT", 4, 0)
+  eb:SetAutoFocus(false); eb:SetNumeric(true); eb:SetMaxLetters(3)
+  eb:SetFont(fontPath(), 12, ""); eb:SetJustifyH("CENTER"); eb:SetTextColor(1, 1, 1, 0.95)
+  local ebg = eb:CreateTexture(nil, "BACKGROUND"); ebg:SetAllPoints(); ebg:SetColorTexture(s.btn[1], s.btn[2], s.btn[3], 1)
+  edges(eb, 1, 1, 1, 0.18)
+  local hint = text(eb, 10, 1, 1, 1, 0.45); hint:SetPoint("CENTER"); hint:SetText("all")
+  eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+  eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+  eb:SetScript("OnEditFocusLost", function(self)
+    ProfessionWizardDB.takeSteps = tonumber(self:GetText()) or 0
+    L.takeRefresh()
+  end)
+  local pts = text(b, 11, 1, 1, 1, 0.6); pts:SetPoint("LEFT", eb, "RIGHT", 6, 0); pts:SetText("points of")
+  local prof = chip(b, "ALCHEMY", 84)
+  prof:SetPoint("LEFT", pts, "RIGHT", 6, 0)
+  prof:SetScript("OnClick", function()
+    local profs = L.takeProfs()
+    local k = 0
+    for i, pid in ipairs(profs) do if pid == t.pid then k = i end end
+    t.pid = profs[k % math.max(1, #profs) + 1]
+    L.takeRefresh()
+  end)
+  tip(prof, "Which profession", "Click to switch between the professions you're still levelling.")
+  b:SetScript("OnClick", function()
     if take then take = nil; takeFrame:Hide(); Print("stopped."); return end
-    local want, pid, upto = L.takeWants()
-    if not want then Print("no route here: open the panel on the profession you're levelling first."); return end
-    take = { want = want, wait = 0, n = 0, upto = upto }
-    Print("taking what " .. profName(pid) .. " needs up to " .. upto .. " from your mail...")
+    eb:ClearFocus()
+    local want, upto = L.takeWants(t.pid)
+    if not want then Print("no route to take materials for: pick a profession you're still levelling."); return end
+    take = { want = want, wait = 0, n = 0, upto = upto, tried = {}, prof = profName(t.pid) }
+    Print("taking what " .. take.prof .. " needs up to " .. upto .. " from your mail...")
     takeFrame:Show()
   end)
   tip(b, "Take for your route",
-    "Takes out of your mail only the materials the next skill points of your route use (the profession shown in the panel), less what's in your bags. Whole stacks, one at a time; mails with cash on delivery are left alone.",
-    "Right-click: next 25, 50 or 100 skill points, or up to your target. Click again while it runs to stop.")
-  L.takeBtn = b
-  L.takeLabel(b)
+    "Takes out of your mail only the materials the next skill points of that profession's route use, less what's in your bags. Leave the number empty for everything up to your target.",
+    "Whole stacks, one at a time; mails with cash on delivery are left alone. Click again while it runs to stop.")
+  t.eb, t.hint, t.prof = eb, hint, prof
+  L.takeRefresh()
 end
 
 function L.sendTabShown()

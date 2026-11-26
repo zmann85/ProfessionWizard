@@ -3,9 +3,10 @@
 ## Unreleased
 
 ### Added
-- TAKE FOR NEXT 50 on the inbox: takes out of your mail only the materials the next 50 skill points of your route
-  use (the profession shown in the panel), less what's in your bags, and stops when your bags are full.
-  Right-click for the next 25, 50 or 100 points or up to your target. Mails with cash on delivery are skipped.
+- TAKE FOR NEXT on the inbox: takes out of your mail only the materials the next skill points of a route use,
+  less what's in your bags (reagent bag included), and stops when your bags are full. Type how many points (empty
+  for everything up to your target) and click the profession to pick which one. Mails with cash on delivery are
+  skipped.
 
 ### Fixed
 - A material that's needed both as it is and for something you make (Silk Cloth for Bolts of Silk Cloth) showed a
