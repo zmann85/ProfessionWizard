@@ -134,3 +134,25 @@ function ns.rankCost(pid, cap)
   if ns.RANK_NO_COST[pid] and ns.RANK_NO_COST[pid][cap] then return nil end
   return ns.RANK_COST[cap]
 end
+
+-- Specialization recipes: only a character with that specialization can learn them (Leatherworking's at 225 and
+-- level 40 after a questline, Engineering's at 200). Routes leave them out for everyone else.
+ns.SPECS = {
+  dragonscale = { spell = 10656, name = "Dragonscale Leatherworking" },
+  elemental   = { spell = 10658, name = "Elemental Leatherworking" },
+  tribal      = { spell = 10660, name = "Tribal Leatherworking" },
+  gnomish     = { spell = 20219, name = "Gnomish Engineering" },
+  goblin      = { spell = 20222, name = "Goblin Engineering" },
+}
+ns.SPEC_RECIPES = {
+  [10619] = "dragonscale", [10650] = "dragonscale",                      -- Dragonscale Gauntlets, Breastplate
+  [10630] = "elemental", [10632] = "elemental",                          -- Gauntlets of the Sea, Helm of Fire
+  [10621] = "tribal", [10647] = "tribal",                                -- Wolfshead Helm, Feathered Breastplate
+  [12716] = "goblin", [12718] = "goblin", [12754] = "goblin", [12755] = "goblin", -- Mortar, Construction Helmet,
+  [12758] = "goblin", [12760] = "goblin", [12908] = "goblin", [12715] = "goblin", -- The Big One, Bomb Dispenser,
+                                                                         -- Rocket Helmet, Sapper Charge, Dragon Gun
+  [12759] = "gnomish", [12895] = "gnomish", [12897] = "gnomish", [12899] = "gnomish", -- Death Ray, Goggles,
+  [12902] = "gnomish", [12903] = "gnomish", [12905] = "gnomish", [12906] = "gnomish", -- Shrink Ray, Net-o-Matic,
+  [12907] = "gnomish",                                                   -- Harm Prevention Belt, Rocket Boots,
+                                                                         -- Battle Chicken, Mind Control Cap
+}

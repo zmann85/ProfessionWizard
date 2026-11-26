@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Fixed
+- Specialization recipes are left out of routes unless the character has that specialization: Dragonscale
+  Gauntlets and Breastplate (Dragonscale), Gauntlets of the Sea and Helm of Fire (Elemental), Wolfshead Helm and
+  Feathered Breastplate (Tribal), and the Gnomish and Goblin Engineering trainer recipes. Dragonscale Gauntlets
+  were planned at 200-225 for a level 35 character.
 - Mail on an alt stayed counted after you returned it or took it and closed the mailbox right away: the mailbox is
   now saved the moment it changes. A returned mail also counts as on the way to its sender, like mail you send.
 

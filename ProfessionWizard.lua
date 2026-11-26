@@ -766,8 +766,25 @@ end
 
 -- may the route learn this from a trainer? Not for recipes with no known source, and not for special trainers
 -- (questline or one NPC) when that's switched off in the settings
+-- does this character have the specialization a recipe needs? (its spell, or any recipe of it already known)
+function L.hasSpec(key)
+  local sp = ns.SPECS and ns.SPECS[key]
+  if not sp then return true end
+  if IsPlayerSpell then
+    local ok, has = pcall(IsPlayerSpell, sp.spell)
+    if ok and has then return true end
+  end
+  local known = L.knownSet()
+  for spell, k in pairs(ns.SPEC_RECIPES or {}) do
+    if k == key and known[spell] then return true end
+  end
+  return false
+end
+
 function L.trainable(r)
   if not r.trainer or (ns.NO_SOURCE or {})[r.spell] then return false end
+  local spec = (ns.SPEC_RECIPES or {})[r.spell]
+  if spec and not L.hasSpec(spec) then return false end
   if (ns.TRAINER_NOTES or {})[r.spell] and ProfessionWizardDB.special == false then return false end
   return true
 end
@@ -2007,7 +2024,9 @@ function L.pinSearch()
     local r = found[i]
     l.r = r
     if r then
-      local src = (ns.TRAINER_NOTES or {})[r.spell] and "special" or (r.trainer and "trainer") or ((r.plans or 0) > 0 and "recipe") or "?"
+      local spec = (ns.SPEC_RECIPES or {})[r.spell]
+      local src = spec and (ns.SPECS[spec].name:match("^(%S+)") .. " only") or (ns.TRAINER_NOTES or {})[r.spell] and "special"
+        or (r.trainer and "trainer") or ((r.plans or 0) > 0 and "recipe") or "?"
       l.name:SetText(L.colorAt(r, math.max(cur, r.learn)) .. r.name .. "|r")
       l.info:SetText((pins[r.spell] and "|cffffd172pinned|r  ·  " or "") .. "learn " .. r.learn .. "  ·  " .. r.y .. "-" .. r.g .. "  ·  " .. src)
       l:Show()
@@ -4267,11 +4286,11 @@ ev:SetScript("OnEvent", function(self, event, arg1)
     ProfessionWizardDB.pos = nil -- the old account-wide place: each character now keeps its own
     -- recipe data corrected (recipes that need plans were marked as taught by trainers): every saved route
     -- shows as out of date, so FIND CHEAPEST ROUTE plans around them again
-    if (ProfessionWizardDB.dataVersion or 1) < 11 then
+    if (ProfessionWizardDB.dataVersion or 1) < 12 then
       for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
         for _, r in pairs(byProf) do if type(r) == "table" then r.dirty = true end end
       end
-      ProfessionWizardDB.dataVersion = 11
+      ProfessionWizardDB.dataVersion = 12
     end
     -- version 2 keys are full names: drop the saved characters and crafter lists under first names alone
     -- (they come back right away from GoldSense, or when each character logs in)
