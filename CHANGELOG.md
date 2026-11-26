@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- GOALS (top right of the panel): a shopping list for things you want made, from any profession and whatever you
+  can craft yourself. ADD RECIPE searches every profession; click a wanted item for one more, right-click for one
+  less, shift-right-click to remove it. The materials show what you have (bags, bank, mail, alts), what's still
+  missing and what it costs, and SEARCH MISSING looks it up at the auction house.
+
 ## v1.13.0 (2026-11-26)
 
 ### Added

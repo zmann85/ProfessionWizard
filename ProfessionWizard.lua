@@ -1861,6 +1861,16 @@ function L.makeStep(i)
   l.go:HookScript("OnLeave", function() GameTooltip:Hide() end)
   l:SetScript("OnEnter", function(self)
     local st = self.st
+    if st and st.wish then
+      local r = st.r
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      if r.creates > 0 then GameTooltip:SetItemByID(r.creates) else GameTooltip:AddLine(r.name, 1, 1, 1) end
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddLine(profName(r.prof) .. ", learned at " .. r.learn, 0.8, 0.8, 0.8)
+      GameTooltip:AddLine("Click +1, right-click -1, shift-right-click removes it.", 0.6, 0.6, 0.6, true)
+      GameTooltip:Show()
+      return
+    end
     if st and st.rankRow then
       local rk = st.rankRow
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -1939,6 +1949,10 @@ function L.makeStep(i)
   end)
   l:SetScript("OnLeave", function() GameTooltip:Hide() end)
   l:SetScript("OnMouseUp", function(self, button)
+    if self.st and self.st.wish then
+      local d = button == "RightButton" and (IsShiftKeyDown() and -self.st.wish.n or -1) or 1
+      L.wishAdd(self.st.r, d); refresh(); return
+    end
     local r = self.st and self.st.r
     if r and button == "RightButton" then
       if IsControlKeyDown() then L.toggleBan(r) else L.togglePin(r) end
@@ -2046,6 +2060,9 @@ function L.buildPinSearch(s)
     l:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     l:SetScript("OnClick", function(self, button)
       if not self.r then return end
+      if frame.goalsMode then
+        L.wishAdd(self.r, 1); Print("added " .. self.r.name .. " to your goals."); refresh(); return
+      end
       if button == "RightButton" then L.toggleBan(self.r) else L.togglePin(self.r) end
       L.pinSearch(); refresh()
     end)
@@ -2068,11 +2085,40 @@ end
 function L.pinSearch()
   local pop = frame and frame.pinPop
   if not pop or not pop:IsShown() then return end
+  local q = (pop.eb:GetText() or ""):lower()
+  pop.hint:SetText(frame.goalsMode and "type part of a recipe name, any profession" or "type part of a recipe name (click pins, right-click excludes)")
+  pop.hint:SetShown(q == "")
+  local found = {}
+  if frame.goalsMode then
+    -- goals: every crafting profession
+    pop.goals = true
+    if #q >= 2 then
+      for _, pr in ipairs(PROFS) do
+        if not pr.gather then
+          for _, r in ipairs(recipes(pr.id).list) do
+            if r.creates > 0 and r.name:lower():find(q, 1, true) then found[#found + 1] = r end
+          end
+        end
+      end
+    end
+    table.sort(found, function(a, b) return a.name < b.name end)
+    for i, l in ipairs(pop.lines) do
+      local r = found[i]
+      l.r = r
+      if r then
+        l.name:SetText(r.name)
+        l.info:SetText((PROF[r.prof] and PROF[r.prof].short or "") .. "  ·  " .. #r.mats .. " materials")
+        l:Show()
+      else
+        l:Hide()
+      end
+    end
+    return
+  end
+  pop.goals = nil
   local pid = shownProf()
   if not pid then return end
-  local q = (pop.eb:GetText() or ""):lower()
-  pop.hint:SetShown(q == "")
-  local pins, bans, found = L.pins(pid), L.bans(pid), {}
+  local pins, bans = L.pins(pid), L.bans(pid)
   for _, r in ipairs(recipes(pid).list) do
     if (q == "" and (pins[r.spell] or bans[r.spell])) or (#q >= 2 and r.name:lower():find(q, 1, true)) then found[#found + 1] = r end
   end
@@ -2370,6 +2416,7 @@ local function build()
           if refresh then refresh() end
           return
         end
+        frame.goalsMode = nil
         pick(pr.id)
       end)
       c:HookScript("OnEnter", function(self)
@@ -2391,6 +2438,15 @@ local function build()
   end
 
   -- + : plan a profession you haven't learned
+  -- GOALS: materials for things you want made, from any profession, whatever you can craft
+  frame.goalsChip = chip(frame, "GOALS", 70)
+  frame.goalsChip:SetScript("OnClick", function()
+    frame.goalsMode = not frame.goalsMode or nil
+    frame.addMode, viewing = nil, nil
+    if frame.pinPop then frame.pinPop:Hide() end
+    refresh()
+  end)
+  tip(frame.goalsChip, "Goals", "A shopping list for things you want made: add recipes from any profession, how many of each, and see what materials you have and what's still missing. It doesn't matter who crafts them.")
   frame.addProf = chip(frame, "+", 24)
   frame.addProf:SetScript("OnClick", function()
     frame.addMode = not frame.addMode or nil
@@ -3187,9 +3243,143 @@ local function onAuction(event, arg1)
 end
 
 -- another character's saved list: what it still needs, what you can send, what to buy
+-- the goals list of this character: { { spell, pid, n }, ... }
+function L.wishList()
+  ProfessionWizardDB.wish = ProfessionWizardDB.wish or {}
+  local k = myKey()
+  ProfessionWizardDB.wish[k] = ProfessionWizardDB.wish[k] or {}
+  return ProfessionWizardDB.wish[k]
+end
+
+function L.wishAdd(r, d)
+  local list = L.wishList()
+  for i, w in ipairs(list) do
+    if w.spell == r.spell then
+      w.n = w.n + d
+      if w.n <= 0 then table.remove(list, i) end
+      return
+    end
+  end
+  if d > 0 then list[#list + 1] = { spell = r.spell, pid = r.prof, n = d } end
+end
+
+function L.renderGoals(warm, green, red, dim)
+  for _, c in ipairs(frame.ctrl) do c:Hide() end
+  for _, c in ipairs(frame.milestones) do c:Hide() end
+  frame.cast:Hide(); frame.empty:Hide(); frame.more:Hide(); frame.share:Hide()
+  placeSmelt(nil, 0, false, true)
+  L.hideSecure(openBtn)
+  frame.title:SetText("Goals")
+  frame.sub:SetText("materials for what you want made, from any profession  ·  ADD RECIPE to add one")
+  frame.bar:SetWidth(1)
+  frame.colNeed:SetText("NEED"); frame.colHave:SetText("HAVE"); frame.colStat:SetText("STILL NEED")
+
+  local y = 108
+  local wish = L.wishList()
+  frame.stepsHead:ClearAllPoints(); frame.stepsHead:SetPoint("TOPLEFT", PAD, -y); frame.stepsHead:Show()
+  frame.stepsHead:SetText("WANTED")
+  frame.pinBtn.text:SetText("ADD RECIPE")
+  frame.pinBtn:ClearAllPoints(); frame.pinBtn:SetPoint("TOPRIGHT", -PAD, -y + 2); frame.pinBtn:Show()
+  y = y + 16
+  local need, order = {}, {}
+  for i, l in ipairs(stepLines) do
+    local w = wish[i]
+    local r = w and recipes(w.pid).bySpell[w.spell]
+    if r then
+      l.st = { r = r, wish = w }
+      l:ClearAllPoints(); l:SetPoint("TOPLEFT", PAD, -y); y = y + STEP_H + 4
+      l.range:SetText(PROF[w.pid] and PROF[w.pid].short or "")
+      l.name:SetText(r.name)
+      l.crafts:SetText("x" .. w.n)
+      l.info:SetWidth(W - PAD * 2 - 332)
+      l.info:SetText(dim .. "click +1, right-click -1, shift-right-click removes|r")
+      l.go:Hide(); l.amt:Hide()
+      l:Show()
+    else
+      l.st = nil; l:Hide()
+    end
+  end
+  for _, w in ipairs(wish) do
+    local r = recipes(w.pid).bySpell[w.spell]
+    for _, m in ipairs(r and r.mats or {}) do
+      if not need[m[1]] then order[#order + 1] = m[1] end
+      need[m[1]] = (need[m[1]] or 0) + m[2] * math.ceil(w.n / math.max(1, r.made or 1))
+    end
+  end
+  if #wish == 0 then
+    frame.empty:SetText("Nothing here yet. Click ADD RECIPE and pick what you want made, from any profession.")
+    frame.empty:ClearAllPoints(); frame.empty:SetPoint("TOPLEFT", PAD, -y - 4); frame.empty:Show()
+    y = y + 34
+  end
+
+  y = y + 10
+  frame.matHead:ClearAllPoints(); frame.matHead:SetPoint("TOPLEFT", PAD, -y); frame.matHead:Show()
+  frame.matHead:SetText("MATERIALS")
+  frame.colNeed:ClearAllPoints(); frame.colNeed:SetPoint("TOPLEFT", PAD + X_NEED, -y); frame.colNeed:Show()
+  frame.colHave:ClearAllPoints(); frame.colHave:SetPoint("TOPLEFT", PAD + X_HAVE, -y); frame.colHave:Show()
+  frame.colStat:ClearAllPoints(); frame.colStat:SetPoint("TOPLEFT", PAD + X_STAT, -y); frame.colStat:Show()
+  y = y + 18
+  local list = {}
+  for _, id in ipairs(order) do
+    local row = L.newRow(id, need[id])
+    row.missing = math.max(0, row.need - row.have)
+    list[#list + 1] = row
+  end
+  L.sortRows(list)
+  frame.list = list
+  local cost, missingKinds = 0, 0
+  for _, row in ipairs(list) do
+    if row.missing > 0 then
+      missingKinds = missingKinds + 1
+      local p = buyPrice(row.id)
+      if p then cost = cost + p * row.missing end
+    end
+  end
+  for i, r in ipairs(rows) do
+    local row = list[i]
+    r.act:Hide()
+    if row then
+      r.row = row
+      r:ClearAllPoints(); r:SetPoint("TOPLEFT", PAD, -y); y = y + ROW_H
+      r.icon:ClearAllPoints(); r.icon:SetPoint("LEFT", 0, 0)
+      r.name:ClearAllPoints(); r.name:SetPoint("LEFT", 22, 0); r.name:SetWidth(220)
+      r.icon:SetTexture(GetIcon and GetIcon(row.id) or 134400)
+      r.name:SetText(GetItemInfo(row.id) or ("item " .. row.id))
+      r.need:SetText(tostring(row.need))
+      local parts = { tostring(row.own) }
+      if row.mail > 0 then parts[#parts + 1] = row.mail .. " mail" end
+      if row.alts > 0 then parts[#parts + 1] = row.alts .. " alts" end
+      r.have:SetText(table.concat(parts, " + "))
+      if row.missing > 0 then
+        local p, where = buyPrice(row.id)
+        r.status:SetText(red .. row.missing .. "|r" .. (p and (dim .. "  ~" .. money(p * row.missing) .. (where == "vendor" and " vendor" or "") .. "|r") or (dim .. "  no price|r")))
+      else
+        r.status:SetText(green .. "done|r")
+      end
+      r.name:SetTextColor(1, 1, 1, row.missing > 0 and 0.9 or 0.45)
+      r:Show()
+    else
+      r.row = nil; r:Hide()
+    end
+  end
+  if #list > #rows then
+    frame.more:SetText(string.format("+ %d more (they're in SEARCH MISSING)", #list - #rows))
+    frame.more:ClearAllPoints(); frame.more:SetPoint("TOPLEFT", PAD + 22, -y - 2); frame.more:Show()
+    y = y + 16
+  end
+  y = y + 8
+  local foot
+  if #list == 0 then foot = ""
+  elseif missingKinds == 0 then foot = green .. "You have everything for these.|r"
+  else foot = string.format("Still to buy: ~%s", money(cost)) end
+  frame.planBuys = {}
+  frame.foot:SetText(foot)
+  placeFooter(y, missingKinds > 0, nil, true)
+end
+
 local function renderSheet(g, warm, green, red, dim)
   for _, c in ipairs(profChips) do c:Hide() end
-  frame.addProf:Hide()
+  frame.addProf:Hide(); frame.goalsChip:Hide()
   frame.pinBtn:Hide(); frame.pinPop:Hide()
   for _, c in ipairs(frame.ctrl) do c:Hide() end
   for _, c in ipairs(frame.milestones) do c:Hide() end
@@ -3476,7 +3666,7 @@ refresh = function()
   local pid = shownProf()
   frame.lists:SetActive(viewing and true or false)
   -- a character without a crafting profession shows the newest saved list instead
-  if not viewing and not pid then
+  if not viewing and not pid and not frame.goalsMode then
     local first = L.sheetList()[1]
     if first then viewing = first.key end
   end
@@ -3509,6 +3699,13 @@ refresh = function()
   frame.addProf:ClearAllPoints(); frame.addProf:SetPoint("TOPLEFT", x, -76)
   frame.addProf.text:SetText(frame.addMode and "x" or "+")
   frame.addProf:SetActive(frame.addMode and true or false); frame.addProf:Show()
+  frame.goalsChip:ClearAllPoints(); frame.goalsChip:SetPoint("TOPRIGHT", -PAD, -76)
+  frame.goalsChip:SetActive(frame.goalsMode and true or false); frame.goalsChip:Show()
+  if frame.goalsMode then
+    for _, c in ipairs(profChips) do c:SetActive(false) end
+    L.renderGoals(warm, green, red, dim)
+    return
+  end
 
   local function hideAll()
     for _, l in ipairs(stepLines) do l:Hide() end
@@ -3611,6 +3808,7 @@ refresh = function()
     frame.hint:Hide()
   end
   frame.stepsHead:ClearAllPoints(); frame.stepsHead:SetPoint("TOPLEFT", PAD, -y)
+  frame.pinBtn.text:SetText("PIN / EXCLUDE")
   frame.pinBtn:ClearAllPoints(); frame.pinBtn:SetPoint("TOPRIGHT", -PAD, -y + 2); frame.pinBtn:Show()
   y = y + 16
   local vendorBack, matTotal, plansTotal, vendorOnly = 0, 0, 0, 0
