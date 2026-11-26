@@ -824,6 +824,7 @@ end
 -- can this be made on the way, as a material for something else?
 function L.canMake(r, ctx)
   if L.onCooldown(r) then return false end
+  if ProfessionWizardDB.bans and L.bans(r.prof)[r.spell] then return false end
   if r.prof == MINING then return ctx.mining >= r.learn end
   if r.prof ~= ctx.pid then return false end
   if isKnown(r) then return true end
@@ -898,9 +899,28 @@ function L.pins(pid)
   return ProfessionWizardDB.pins[k]
 end
 
+-- recipes you excluded: routes never use them, nor make materials with them
+function L.bans(pid)
+  ProfessionWizardDB.bans = ProfessionWizardDB.bans or {}
+  local k = myKey() .. ":" .. pid
+  ProfessionWizardDB.bans[k] = ProfessionWizardDB.bans[k] or {}
+  return ProfessionWizardDB.bans[k]
+end
+
+function L.toggleBan(r)
+  local bans = L.bans(r.prof)
+  bans[r.spell] = not bans[r.spell] or nil
+  if bans[r.spell] then L.pins(r.prof)[r.spell] = nil end -- one or the other
+  for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
+    if type(byProf) == "table" and type(byProf[r.prof]) == "table" then byProf[r.prof].dirty = true end
+  end
+  Print((bans[r.spell] and "excluded " or "allowed again: ") .. r.name .. ".")
+end
+
 function L.togglePin(r)
   local pins = L.pins(r.prof)
   pins[r.spell] = not pins[r.spell] or nil
+  if pins[r.spell] then L.bans(r.prof)[r.spell] = nil end
   for _, byProf in pairs(ProfessionWizardDB.routes or {}) do
     if type(byProf) == "table" and type(byProf[r.prof]) == "table" then byProf[r.prof].dirty = true end
   end
@@ -910,6 +930,7 @@ end
 function L.findRoute(pid, from, to)
   local ctx = newCtx(pid, from)
   local pins = L.pins(pid)
+  local bans = L.bans(pid)
   local cands, waiting, unpriced = {}, 0, {}
   -- USE WHAT I HAVE: materials you own (bags, bank, mail, alts as counted) cost nothing until they run out
   local owned = ProfessionWizardDB.useOwned and {} or nil
@@ -918,7 +939,7 @@ function L.findRoute(pid, from, to)
   local backW = ProfessionWizardDB.lowUpfront and (ProfessionWizardDB.upfrontW or 0.25) or 1
   local ctxs = { [from] = ctx }
   for _, r in ipairs(recipes(pid).list) do
-    if r.g > from and r.learn < to then
+    if r.g > from and r.learn < to and not bans[r.spell] then
       local ok, plansCost, where = L.usable(r, from)
       if not ok and pins[r.spell] then
         -- pinned: you mean to get it, from a recipe if it takes one
@@ -1913,12 +1934,16 @@ function L.makeStep(i)
     end
     GameTooltip:AddLine(L.pins(r.prof)[r.spell] and "Right-click to unpin it." or "Right-click to pin it: the route then uses it wherever it's orange or yellow.",
       0.6, 0.6, 0.6, true)
+    GameTooltip:AddLine("Ctrl-right-click to exclude it: the route then never uses it.", 0.6, 0.6, 0.6, true)
     GameTooltip:Show()
   end)
   l:SetScript("OnLeave", function() GameTooltip:Hide() end)
   l:SetScript("OnMouseUp", function(self, button)
     local r = self.st and self.st.r
-    if r and button == "RightButton" then L.togglePin(r); refresh(); return end
+    if r and button == "RightButton" then
+      if IsControlKeyDown() then L.toggleBan(r) else L.togglePin(r) end
+      refresh(); return
+    end
     if not r or isKnown(r) or r.trainer or (r.plans or 0) == 0 then return end
     local name, link = GetItemInfo(r.plans)
     if IsShiftKeyDown() and link then insertLink(link); return end
@@ -1992,7 +2017,7 @@ end
 
 -- PIN RECIPE: a search over this profession's recipes; clicking one pins or unpins it
 function L.buildPinSearch(s)
-  local b = chip(frame, "PIN RECIPE", 96)
+  local b = chip(frame, "PIN / EXCLUDE", 110)
   b:SetHeight(16)
   frame.pinBtn = b
   local pop = CreateFrame("Frame", nil, frame)
@@ -2010,7 +2035,7 @@ function L.buildPinSearch(s)
   local ebg = eb:CreateTexture(nil, "BACKGROUND"); ebg:SetAllPoints(); ebg:SetColorTexture(s.btn[1], s.btn[2], s.btn[3], 1)
   edges(eb, 1, 1, 1, 0.18)
   eb:SetTextInsets(6, 6, 0, 0)
-  local hint = text(eb, 11, 1, 1, 1, 0.35); hint:SetPoint("LEFT", 6, 0); hint:SetText("type part of a recipe name")
+  local hint = text(eb, 11, 1, 1, 1, 0.35); hint:SetPoint("LEFT", 6, 0); hint:SetText("type part of a recipe name (click pins, right-click excludes)")
   pop.eb, pop.hint, pop.lines = eb, hint, {}
   for i = 1, 10 do
     local l = CreateFrame("Button", nil, pop)
@@ -2018,8 +2043,11 @@ function L.buildPinSearch(s)
     l.hl = l:CreateTexture(nil, "HIGHLIGHT"); l.hl:SetAllPoints(); l.hl:SetColorTexture(1, 1, 1, 0.08)
     l.name = text(l, 11, 1, 1, 1, 0.95); l.name:SetPoint("LEFT", 2, 0); l.name:SetWidth(190); l.name:SetJustifyH("LEFT")
     l.info = text(l, 10, 1, 1, 1, 0.55); l.info:SetPoint("RIGHT", -2, 0); l.info:SetJustifyH("RIGHT")
-    l:SetScript("OnClick", function(self)
-      if self.r then L.togglePin(self.r); L.pinSearch(); refresh() end
+    l:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    l:SetScript("OnClick", function(self, button)
+      if not self.r then return end
+      if button == "RightButton" then L.toggleBan(self.r) else L.togglePin(self.r) end
+      L.pinSearch(); refresh()
     end)
     l:Hide()
     pop.lines[i] = l
@@ -2031,8 +2059,9 @@ function L.buildPinSearch(s)
     pop:SetShown(not pop:IsShown())
     if pop:IsShown() then eb:SetText(""); eb:SetFocus(); L.pinSearch() end
   end)
-  tip(b, "Pin a recipe", "Search this profession's recipes and click one to pin it: the route then uses it wherever it's orange or yellow, whatever it costs.",
-    "Click a pinned one again (or right-click its step) to unpin it.")
+  tip(b, "Pin or exclude a recipe", "Search this profession's recipes. Click one to pin it: the route then uses it wherever it's orange or yellow, whatever it costs.",
+    "Right-click one to exclude it: the route never uses it, nor makes materials with it. Do the same again to undo.",
+    "On a step: right-click pins, ctrl-right-click excludes.")
 end
 
 -- fill the search list: pinned ones first while the box is empty, otherwise the names that match
@@ -2043,9 +2072,9 @@ function L.pinSearch()
   if not pid then return end
   local q = (pop.eb:GetText() or ""):lower()
   pop.hint:SetShown(q == "")
-  local pins, found = L.pins(pid), {}
+  local pins, bans, found = L.pins(pid), L.bans(pid), {}
   for _, r in ipairs(recipes(pid).list) do
-    if (q == "" and pins[r.spell]) or (#q >= 2 and r.name:lower():find(q, 1, true)) then found[#found + 1] = r end
+    if (q == "" and (pins[r.spell] or bans[r.spell])) or (#q >= 2 and r.name:lower():find(q, 1, true)) then found[#found + 1] = r end
   end
   table.sort(found, function(a, b) if a.learn ~= b.learn then return a.learn < b.learn end return a.name < b.name end)
   local cur = (readSkill(pid)) or 1
@@ -2057,7 +2086,7 @@ function L.pinSearch()
       local src = spec and (ns.SPECS[spec].name:match("^(%S+)") .. " only") or (ns.TRAINER_NOTES or {})[r.spell] and "special"
         or (r.trainer and "trainer") or ((r.plans or 0) > 0 and "recipe") or "?"
       l.name:SetText(L.colorAt(r, math.max(cur, r.learn)) .. r.name .. "|r")
-      l.info:SetText((pins[r.spell] and "|cffffd172pinned|r  ·  " or "") .. "learn " .. r.learn .. "  ·  " .. r.y .. "-" .. r.g .. "  ·  " .. src)
+      l.info:SetText((pins[r.spell] and "|cffffd172pinned|r  ·  " or bans[r.spell] and "|cffff7366excluded|r  ·  " or "") .. "learn " .. r.learn .. "  ·  " .. r.y .. "-" .. r.g .. "  ·  " .. src)
       l:Show()
     else
       l:Hide()

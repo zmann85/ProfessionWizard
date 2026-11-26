@@ -7,6 +7,8 @@
   less what's in your bags (reagent bag included), and stops when your bags are full. Type how many points (empty
   for everything up to your target) and click the profession to pick which one. Mails with cash on delivery are
   skipped.
+- Exclude recipes: in PIN / EXCLUDE (was PIN RECIPE) right-click a recipe, or ctrl-right-click its step. The route
+  never uses it then, nor makes materials with it. The same again allows it back.
 
 ### Fixed
 - Materials you have that the route turns into something else (Silk Cloth into Bolts of Silk Cloth) could go
