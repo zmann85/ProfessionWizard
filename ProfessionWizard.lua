@@ -3687,7 +3687,7 @@ refresh = function()
     else want = skills[c.pid] and true or false end
     if want then shown[#shown + 1] = c else c:Hide() end
   end
-  local step = math.min(84, math.floor((W - PAD * 2 - 30) / math.max(1, #shown)))
+  local step = math.min(84, math.floor((W - PAD * 2 - 30 - 76) / math.max(1, #shown))) -- room for + and GOALS
   local x = PAD
   for _, c in ipairs(shown) do
     c:SetWidth(step - 4)
